@@ -17,6 +17,7 @@
 #include "SombreroMeshRenderer.h"
 #include "UncertaintyCartoonRenderer.h"
 #include "VariantMatchRenderer.h"
+#include "ViewOptimizationRenderer.h"
 
 // 2D renderers
 #include "DiagramRenderer.h"
@@ -66,6 +67,7 @@ public:
         this->module_descriptions.RegisterAutoDescription<megamol::protein_gl::MSMSGenus0Generator>();
         this->module_descriptions.RegisterAutoDescription<megamol::protein_gl::MSMSMeshLoader>();
         this->module_descriptions.RegisterAutoDescription<megamol::protein_gl::TunnelCutter>();
+        this->module_descriptions.RegisterAutoDescription<megamol::protein_gl::ViewOptimizationRenderer>();
 
         // register calls
     }
