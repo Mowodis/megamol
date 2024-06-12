@@ -24,6 +24,7 @@
 #include "mmstd_gl/view/HeadView.h"
 #include "mmstd_gl/view/SplitViewGL.h"
 #include "mmstd_gl/view/View2DGL.h"
+#include "mmstd_gl/view/View3DCamGL.h"
 #include "mmstd_gl/view/View3DGL.h"
 #include "renderer/PlaneRenderer.h"
 #include "upscaling/ImageSpaceAmortization2D.h"
@@ -43,6 +44,7 @@ public:
 
         // register modules
         this->module_descriptions.RegisterAutoDescription<mmstd_gl::view::View2DGL>();
+        this->module_descriptions.RegisterAutoDescription<mmstd_gl::view::View3DCamGL>();
         this->module_descriptions.RegisterAutoDescription<mmstd_gl::view::View3DGL>();
         this->module_descriptions.RegisterAutoDescription<mmstd_gl::view::SplitViewGL>();
         this->module_descriptions.RegisterAutoDescription<mmstd_gl::view::HeadView>();
