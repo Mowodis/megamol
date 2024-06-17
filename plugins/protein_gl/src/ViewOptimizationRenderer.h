@@ -39,14 +39,6 @@ protected:
     bool GetExtents(mmstd_gl::CallRender3DGL& call) override;
     bool Render(mmstd_gl::CallRender3DGL& call) override;
 
-    /* Same as in module "SimpleRenderTarget" */
-    bool getCameraSnapshot(core::Call& caller);
-
-    /* Same as in module "SimpleRenderTarget" */
-    bool getMetaDataCallback(core::Call& caller);
-
-    /* Version counter */
-    uint32_t version_;//
 private:
     /* Require the mesh data from protein and ligand*/
     core::CallerSlot getMacromoleculeMeshData_;
@@ -55,14 +47,8 @@ private:
     /* Set the camera x-coordinate */
     core::param::ParamSlot camXCoord_;
 
-    /* Slot for accessing the camera */
-    core::CalleeSlot camera_;
-
-    /** Local copy of last used camera*/
-    core::view::Camera last_used_camera_;
-
     unsigned long exeCounter_;
-
+    bool isInputXPosChanged;
 
 }; // class Vie//wpointOptimizer
 

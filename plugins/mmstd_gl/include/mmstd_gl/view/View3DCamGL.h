@@ -66,8 +66,6 @@ protected:
      */
     bool create() override;
 
-private:
-    core::CallerSlot _cameraSlot;
 };
 
 } // namespace megamol::mmstd_gl::view

@@ -16,15 +16,9 @@
 #include "mmstd_gl/view/View3DGL.h"
 #include "protein_calls/MolecularDataCall.h"
 
-#include "compositing_gl/CompositingCalls.h"
-//#include "compositing_gl/SimpleRenderTarget.h"     // Not located the in "Public Header Files"
-
 using namespace megamol;
 using namespace megamol::protein_gl;
 
-//using namespace megamol::core::param;
-//using namespace megamol::core::view;
-//using namespace megamol::compositing_gl;
 
 
 using namespace megamol::core::view;
@@ -36,9 +30,8 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
               "Connects the renderer to a data provider to retrieve macromolecule mesh data")
         , getLigandPDBData_("getLigandPDBData", "Connects the renderer to a data provider to retrieve lignad mesh data")
         , camXCoord_("camXCoordinate", "changes the x-coordinate of the camera positon")
-        , camera_("Camera", "Access the latest camera snapshot")
         , exeCounter_(0)
-        , version_(0) {
+        , isInputXPosChanged(true) {
 
     getMacromoleculeMeshData_.SetCompatibleCall<megamol::geocalls_gl::CallTriMeshDataGLDescription>();
     getMacromoleculeMeshData_.SetNecessity(megamol::core::AbstractCallSlotPresentation::Necessity::SLOT_OPTIONAL);
@@ -49,10 +42,6 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
 
     this->camXCoord_.SetParameter(new megamol::core::param::FloatParam(0.0f));
     this->MakeSlotAvailable(&this->camXCoord_);
-
-    //this->camera_.SetCallback(megamol::compositing_gl::CallCamera::ClassName(), "GetData", &ViewOptimizationRenderer::getCameraSnapshot);
-    //this->camera_.SetCallback(megamol::compositing_gl::CallCamera::ClassName(), "GetMetaData", &ViewOptimizationRenderer::getMetaDataCallback);
-    //this->MakeSlotAvailable(&this->camera_);
 }
 
 ViewOptimizationRenderer::~ViewOptimizationRenderer() {
@@ -66,12 +55,10 @@ bool ViewOptimizationRenderer::create() {
 void ViewOptimizationRenderer::release() {}
 
 bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
-    ++version_;
-    last_used_camera_ = call.GetCamera();
-
     megamol::geocalls_gl::CallTriMeshDataGL* ctmd =
         this->getMacromoleculeMeshData_.CallAs<megamol::geocalls_gl::CallTriMeshDataGL>();
 
+    /* 
     int tickTarget = 50;
     if (exeCounter_ == tickTarget) {
         cout << "Here's some info: \n";
@@ -95,6 +82,28 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
     if (exeCounter_ < tickTarget) {
         exeCounter_++;
     }
+    */
+    /* ============= Dummy set camera x position ============= */
+
+    if (isInputXPosChanged) {
+        auto& cam = call.GetCamera();
+        auto cam_pose = cam.getPose();
+
+        float x_pos = this->camXCoord_.Param<core::param::FloatParam>()->Value();
+        auto center_ = call.AccessBoundingBoxes().BoundingBox().CalcCenter();
+
+        glm::vec3 cam_pos = cam.getPose().position;
+        glm::vec3 new_cam_pos = glm::vec3(27, 16, 120);
+
+        cam_pose.position.operator=(new_cam_pos);
+        const auto& cam_intrinsics = cam.get<Camera::PerspectiveParameters>();
+
+        call.SetCamera(Camera(cam_pose, cam_intrinsics));
+
+        isInputXPosChanged = false;
+    }
+    
+    
 
     return true;
 }
@@ -113,20 +122,5 @@ bool ViewOptimizationRenderer::GetExtents(mmstd_gl::CallRender3DGL& call) {
     call.AccessBoundingBoxes().Clear();
     call.AccessBoundingBoxes() = ctmd->AccessBoundingBoxes();
 
-    return true;
-}
-
-bool ViewOptimizationRenderer::getCameraSnapshot(core::Call& caller) {
-    auto cc = dynamic_cast<megamol::compositing_gl::CallCamera*>(&caller);
-
-    if (cc == NULL)
-        return false;
-
-    cc->setData(last_used_camera_, version_);
-
-    return true;
-}
-
-bool ViewOptimizationRenderer::getMetaDataCallback(core::Call& caller) {
     return true;
 }
