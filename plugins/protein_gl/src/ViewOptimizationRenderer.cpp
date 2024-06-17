@@ -1,6 +1,6 @@
 /**
  * MegaMol
- * Copyright (c) 2024 by Marcel Heine
+ * Copyright (c) 2024, MegaMol Dev Team, bachelor student Marcel Heine
  * All rights reserved.
  */
 
@@ -18,7 +18,6 @@
 
 #include "compositing_gl/CompositingCalls.h"
 //#include "compositing_gl/SimpleRenderTarget.h"     // Not located the in "Public Header Files"
-
 
 using namespace megamol;
 using namespace megamol::protein_gl;
@@ -51,9 +50,9 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
     this->camXCoord_.SetParameter(new megamol::core::param::FloatParam(0.0f));
     this->MakeSlotAvailable(&this->camXCoord_);
 
-    this->camera_.SetCallback(megamol::compositing_gl::CallCamera::ClassName(), "GetData", &ViewOptimizationRenderer::getCameraSnapshot);
-    this->camera_.SetCallback(megamol::compositing_gl::CallCamera::ClassName(), "GetMetaData", &ViewOptimizationRenderer::getMetaDataCallback);
-    this->MakeSlotAvailable(&this->camera_);
+    //this->camera_.SetCallback(megamol::compositing_gl::CallCamera::ClassName(), "GetData", &ViewOptimizationRenderer::getCameraSnapshot);
+    //this->camera_.SetCallback(megamol::compositing_gl::CallCamera::ClassName(), "GetMetaData", &ViewOptimizationRenderer::getMetaDataCallback);
+    //this->MakeSlotAvailable(&this->camera_);
 }
 
 ViewOptimizationRenderer::~ViewOptimizationRenderer() {

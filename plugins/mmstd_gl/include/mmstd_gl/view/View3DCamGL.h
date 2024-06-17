@@ -1,8 +1,12 @@
 /**
  * MegaMol
- * Copyright (c) 2018, MegaMol Dev Team
+ * Copyright (c) 2024, MegaMol Dev Team, bachelor student Marcel Heine
  * All rights reserved.
  */
+
+/**
+ * Module "View3DGL" modefied with new caler slot to accept a camera
+*/
 
 #pragma once
 
@@ -63,7 +67,7 @@ protected:
     bool create() override;
 
 private:
-    //core::CallerSlot _cameraSlot;
+    core::CallerSlot _cameraSlot;
 };
 
 } // namespace megamol::mmstd_gl::view

@@ -1,6 +1,6 @@
 /**
  * MegaMol
- * Copyright (c) 2024 by Marcel Heine
+ * Copyright (c) 2024, MegaMol Dev Team, bachelor student Marcel Heine
  * All rights reserved.
  */
 
@@ -12,8 +12,6 @@
 #include "mmcore/param/ParamSlot.h"
 #include "mmcore/view/Camera.h"
 #include "mmstd_gl/renderer/Renderer3DModuleGL.h"
-
-//#include "mmstd_gl/ModuleGL.h"
 #include "mmcore/CalleeSlot.h"
 
 namespace megamol::protein_gl {
