@@ -89,21 +89,19 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         auto& cam = call.GetCamera();
         auto cam_pose = cam.getPose();
 
-        float x_pos = this->camXCoord_.Param<core::param::FloatParam>()->Value();
-        auto center_ = call.AccessBoundingBoxes().BoundingBox().CalcCenter();
+        //float x_pos = this->camXCoord_.Param<core::param::FloatParam>()->Value();
+        //auto center_ = call.AccessBoundingBoxes().BoundingBox().CalcCenter();
 
-        glm::vec3 cam_pos = cam.getPose().position;
+        //glm::vec3 cam_pos = cam.getPose().position;
         glm::vec3 new_cam_pos = glm::vec3(27, 16, 120);
 
-        cam_pose.position.operator=(new_cam_pos);
+        cam_pose.position = new_cam_pos;
         const auto& cam_intrinsics = cam.get<Camera::PerspectiveParameters>();
 
         call.SetCamera(Camera(cam_pose, cam_intrinsics));
 
         isInputXPosChanged = false;
     }
-    
-    
 
     return true;
 }
