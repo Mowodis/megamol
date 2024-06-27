@@ -18,8 +18,7 @@
 
 using namespace megamol;
 using namespace megamol::protein_gl;
-
-
+using namespace megamol::protein_calls;
 
 using namespace megamol::core::view;
 
@@ -55,8 +54,10 @@ bool ViewOptimizationRenderer::create() {
 void ViewOptimizationRenderer::release() {}
 
 bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
+    /*
     megamol::geocalls_gl::CallTriMeshDataGL* ctmd =
         this->getMacromoleculeMeshData_.CallAs<megamol::geocalls_gl::CallTriMeshDataGL>();
+    */
 
     /* 
     int tickTarget = 50;
@@ -83,27 +84,68 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         exeCounter_++;
     }
     */
-    /* ============= Dummy set camera x position ============= */
+    /* ============= Simple: set camera position ============= */
 
     if (isInputXPosChanged) {
+        // Calculate naive camera position based on ligand center position
+
+        // get pointer to MolecularDataCall
+        MolecularDataCall* mol = this->getLigandPDBData_.CallAs<MolecularDataCall>();
+        if (mol == NULL)
+            return false;
+
+        // set call time
+        //mol->SetCalltime(callTime);
+        // set frame ID and call data
+        //mol->SetFrameID(static_cast<int>(callTime));
+
+        if (!(*mol)(protein_calls::MolecularDataCall::CallForGetData))
+            return false;
+        // check if atom count is zero
+        if (mol->AtomCount() == 0)
+            return true;
+
+        float* pos0 = new float[mol->AtomCount() * 3];
+
+        memcpy(pos0, mol->AtomPositions(), mol->AtomCount() * 3 * sizeof(float));
+
+        // get ligand ceneter coordinates
+        glm::vec3 ligandCenter = glm::vec3(0, 0, 0);
+        for (unsigned int i = 0; i < mol->AtomCount() * 3; i++) {
+            ligandCenter[i % 3] += pos0[i] / mol->AtomCount();
+        }
+
+        float bbEdgeLengts[] = {0.3, 0.4, 0.5};
+        //cout << meanCord[1] << meanCord[2] << meanCord[3];
+        
+
+        // Change the camera position coordinates of the CallRenderer3DGL call
         auto& cam = call.GetCamera();
-        auto cam_pose = cam.getPose();
+        Camera::Pose newCamPose = cam.getPose();  // have the old camera as default
 
-        //float x_pos = this->camXCoord_.Param<core::param::FloatParam>()->Value();
-        //auto center_ = call.AccessBoundingBoxes().BoundingBox().CalcCenter();
+        glm::vec3 camShift = glm::vec3(30,30,30);
 
-        //glm::vec3 cam_pos = cam.getPose().position;
-        glm::vec3 new_cam_pos = glm::vec3(27, 16, 120);
+        //newCamPose.position = glm::vec3(27, 16, 120);
+        newCamPose.position = ligandCenter + camShift;
+        newCamPose.direction = -camShift;
 
-        cam_pose.position = new_cam_pos;
         const auto& cam_intrinsics = cam.get<Camera::PerspectiveParameters>();
+        
 
-        call.SetCamera(Camera(cam_pose, cam_intrinsics));
+        call.SetCamera(Camera(newCamPose, cam_intrinsics));
+
+
 
         isInputXPosChanged = false;
+
+        delete[] pos0;
     }
 
     return true;
+}
+
+int temoFunction() {
+    return 5;
 }
 
 bool ViewOptimizationRenderer::GetExtents(mmstd_gl::CallRender3DGL& call) {
