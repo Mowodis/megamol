@@ -54,70 +54,78 @@ bool ViewOptimizationRenderer::create() {
 void ViewOptimizationRenderer::release() {}
 
 bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
-    /*
-    megamol::geocalls_gl::CallTriMeshDataGL* ctmd =
-        this->getMacromoleculeMeshData_.CallAs<megamol::geocalls_gl::CallTriMeshDataGL>();
-    */
-
-    /* 
-    int tickTarget = 50;
-    if (exeCounter_ == tickTarget) {
-        cout << "Here's some info: \n";
-
-        ctmd->SetFrameID(static_cast<int>(call.Time()));
-        if (!(*ctmd)(1)) {
-            return false;
-        }
-
-        ctmd->SetFrameID(static_cast<int>(call.Time()));
-        if (!(*ctmd)(0)) {
-            return false;
-        }
-
-        if (ctmd->Count() > 0) {
-            cout << ctmd->Objects()[0].GetVertexCount() << "\n ";
-        }
-
-        exeCounter_++;
-    }
-    if (exeCounter_ < tickTarget) {
-        exeCounter_++;
-    }
-    */
     /* ============= Simple: set camera position ============= */
 
     if (isInputXPosChanged) {
         // Calculate naive camera position based on ligand center position
 
+        /* ------- Get Ligand Data ------- */
         // get pointer to MolecularDataCall
-        MolecularDataCall* mol = this->getLigandPDBData_.CallAs<MolecularDataCall>();
-        if (mol == NULL)
+        MolecularDataCall* ligand = this->getLigandPDBData_.CallAs<MolecularDataCall>();
+        if (ligand == NULL)
             return false;
 
-        // set call time
-        //mol->SetCalltime(callTime);
-        // set frame ID and call data
-        //mol->SetFrameID(static_cast<int>(callTime));
-
-        if (!(*mol)(protein_calls::MolecularDataCall::CallForGetData))
+        if (!(*ligand)(protein_calls::MolecularDataCall::CallForGetData))
             return false;
         // check if atom count is zero
-        if (mol->AtomCount() == 0)
+        if (ligand->AtomCount() == 0)
             return true;
 
-        float* pos0 = new float[mol->AtomCount() * 3];
-
-        memcpy(pos0, mol->AtomPositions(), mol->AtomCount() * 3 * sizeof(float));
-
-        // get ligand ceneter coordinates
-        glm::vec3 ligandCenter = glm::vec3(0, 0, 0);
-        for (unsigned int i = 0; i < mol->AtomCount() * 3; i++) {
-            ligandCenter[i % 3] += pos0[i] / mol->AtomCount();
+        /* ------- Get Macromolecule Data ------- */
+        geocalls_gl::CallTriMeshDataGL* macroMol =
+            this->getMacromoleculeMeshData_.CallAs<megamol::geocalls_gl::CallTriMeshDataGL>();
+        if (macroMol == nullptr) {
+            return false;
+        }
+        macroMol->SetFrameID(static_cast<int>(call.Time()));
+        if (!(*macroMol)(1)) {
+            return false;
         }
 
-        float bbEdgeLengts[] = {0.3, 0.4, 0.5};
-        //cout << meanCord[1] << meanCord[2] << meanCord[3];
-        
+        macroMol->SetFrameID(static_cast<int>(call.Time()));
+        if (!(*macroMol)(0)) {
+            return false;
+        }
+
+        /* ------- Make Camera Calculations ------- */
+
+        // get ligand ceneter coordinates
+        float* pos0 = new float[ligand->AtomCount() * 3];
+
+        memcpy(pos0, ligand->AtomPositions(), ligand->AtomCount() * 3 * sizeof(float));
+
+        glm::vec3 ligandCenter = glm::vec3(0, 0, 0);
+        for (unsigned int i = 0; i < ligand->AtomCount() * 3; i++) {
+            ligandCenter[i % 3] += pos0[i] / ligand->AtomCount();
+        }
+
+        // get obj: the (first) object of the render call. Used for the vertex data
+        const auto& obj = macroMol->Objects()[0];
+        auto vertCount = obj.GetVertexCount();
+        auto triCount = obj.GetTriCount();
+
+        // get radius, which will be used to select vertecies around the ligand center
+        // i.e get max atom distance from ligand center + atom sphere radius + mostly arbitrary value
+        float radius = 0;
+        for (int i = 0; i < ligand->AtomCount(); i++) {
+            float dist = glm::distance(glm::vec3(pos0[i * 3], pos0[i * 3 + 1], pos0[i * 3 + 2]), ligandCenter);
+            if (dist > radius) {
+                radius = dist;
+            }
+            // adding value approximatly of average gap between ligand and macro molecule (arbitrarily chosen)
+            // changes in this value might/will significantly change the camer orientation
+            radius += 3.5;   
+        }
+
+
+        // info and test outputs
+        cout << "MM Count: " << macroMol->Count() << "\n";
+        cout << "Vertex count: " << vertCount << "\n";
+        cout << "Tri(angle) count: " << triCount << "\n";
+        cout << "First vertex, first coord: " << obj.GetVertexPointerFloat()[0] << "\n";
+        cout << "Test euclidian distance method: " << glm::distance(glm::vec3(0, 0, 0), glm::vec3(3, 0, 0)) << "\n";
+        cout << "Vertex selection radius: " << radius << "\n";
+
 
         // Change the camera position coordinates of the CallRenderer3DGL call
         auto& cam = call.GetCamera();
