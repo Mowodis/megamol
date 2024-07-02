@@ -44,10 +44,9 @@ private:
     core::CallerSlot getMacromoleculeMeshData_;
     core::CallerSlot getLigandPDBData_;
 
-    /* Set the camera x-coordinate */
-    core::param::ParamSlot camXCoord_;
+    /* Module parameters */
+    core::param::ParamSlot optimizeCamera_;
 
-    unsigned long exeCounter_;
     bool isInputXPosChanged;
 
 }; // class Vie//wpointOptimizer
