@@ -30,11 +30,12 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
         , getLigandPDBData_("getLigandPDBData", "Connects the renderer to a data provider to retrieve lignad mesh data")
         , optimizeCamera_("OptimizeCamera", "Acts as a button to set the camera to view the ligand binding site") {
 
-    getMacromoleculeMeshData_.SetCompatibleCall<megamol::geocalls_gl::CallTriMeshDataGLDescription>();
-    getMacromoleculeMeshData_.SetNecessity(megamol::core::AbstractCallSlotPresentation::Necessity::SLOT_OPTIONAL);
+    this->getMacromoleculeMeshData_.SetCompatibleCall<megamol::geocalls_gl::CallTriMeshDataGLDescription>();
+    this->getMacromoleculeMeshData_.SetNecessity(megamol::core::AbstractCallSlotPresentation::Necessity::SLOT_REQUIRED);
     this->MakeSlotAvailable(&getMacromoleculeMeshData_);
 
     this->getLigandPDBData_.SetCompatibleCall<protein_calls::MolecularDataCallDescription>();
+    this->getLigandPDBData_.SetNecessity(megamol::core::AbstractCallSlotPresentation::Necessity::SLOT_REQUIRED);
     this->MakeSlotAvailable(&this->getLigandPDBData_);
 
     this->optimizeCamera_.SetParameter(new core::param::BoolParam(true));
@@ -52,20 +53,19 @@ bool ViewOptimizationRenderer::create() {
 void ViewOptimizationRenderer::release() {}
 
 bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
-    /* ============= Simple: set camera position ============= */
+    /* ============= Set camera position ============= */
 
+    // execute this branch for only one tick, then waite until the user sets the parameter to true 
     if (this->optimizeCamera_.Param<core::param::BoolParam>()->Value()) {
-        // Calculate naive camera position based on ligand center position
 
+        // Calculate naive camera position based on ligand center 
         /* ------- Get Ligand Data ------- */
-        // get pointer to MolecularDataCall
         MolecularDataCall* ligand = this->getLigandPDBData_.CallAs<MolecularDataCall>();
         if (ligand == NULL)
             return false;
 
         if (!(*ligand)(protein_calls::MolecularDataCall::CallForGetData))
             return false;
-        // check if atom count is zero
         if (ligand->AtomCount() == 0)
             return true;
 
@@ -85,7 +85,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
             return false;
         }
 
-        /* ------- Make Camera Calculations ------- */
+        /* ------- Make Naive Camera Calculations ------- */
 
         // get ligand ceneter coordinates
         float* pos0 = new float[ligand->AtomCount() * 3];
@@ -108,7 +108,8 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         }
         // adding value approximatly of average gap between ligand and macro molecule (arbitrarily chosen)
         // changes in this value might/should/will significantly change the camer orientation
-        radius += 2;
+        const float atomRadiusAndGap = 2.0f;    
+        radius += atomRadiusAndGap;
 
         // get obj: the (first) object of macromolecule caller slot. Used for the vertex data
         const auto& obj = macroMol->Objects()[0];
@@ -120,9 +121,8 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         glm::vec3 naiveCamDirection = glm::vec3(0, 0, 0);
         unsigned int nrSelectedVertices = 0;
         for (int i = 0; i < vertCount; i++) {
-            glm::vec3 currentVertex = glm::vec3(obj.GetVertexPointerFloat()[i * 3],
-                obj.GetVertexPointerFloat()[i * 3 + 1],
-                obj.GetVertexPointerFloat()[i * 3 + 2]);
+            glm::vec3 currentVertex = glm::vec3(obj.GetVertexPointerFloat()[i * 3], obj.GetVertexPointerFloat()[i * 3 + 1], obj.GetVertexPointerFloat()[i * 3 + 2]);
+
             if (glm::distance(currentVertex, ligandCenter) <= radius) {
                 naiveCamDirection += glm::normalize(ligandCenter - currentVertex);
                 nrSelectedVertices++;
@@ -130,25 +130,14 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         }
         naiveCamDirection = glm::normalize(naiveCamDirection);
 
-        // info and test outputs
-        cout << "Number of macro molecule object: " << macroMol->Count() << "\n";
-        cout << "Vertex count: " << vertCount << "\n";
-        cout << "Tri(angle) count: " << triCount << "\n";
-        cout << "Vertex selection radius: " << radius << "\n";
-        cout << "Nr selected vertices: " << nrSelectedVertices << "\n";
-        cout << "Average direction: " << naiveCamDirection.x << ", " << naiveCamDirection.y << ", " << naiveCamDirection.z << "\n";
-        cout << "Normalization test: " << glm::normalize(glm::vec3(-4, 1, 0)).x << ", " << glm::normalize(glm::vec3(-4, 1, 0)).y << ", " << glm::normalize(glm::vec3(-4, 1, 0)).z << " \n ";
-        cout << "Vector Length test: " << glm::vec3(4, 1, 0).length() << "\n";
-        //cout << "Color test: " << obj.GetColourPointerFloat()[0] << "\n";
-
         /* ------- Set New Camera ------- */
 
         // Change the camera position coordinates of the CallRenderer3DGL call
         auto& cam = call.GetCamera();
-        Camera::Pose newCamPose = cam.getPose();  // have the old camera as default
+        Camera::Pose newCamPose = cam.getPose();  // old camera as default
 
         // camera-ligandcenter distance is _ times the vertex selection radius
-        float camDistFactor = 16.0f;
+        const float camDistFactor = 16.0f;
         newCamPose.position = ligandCenter + naiveCamDirection * glm::vec3(radius * camDistFactor);
         newCamPose.direction = -naiveCamDirection;
 
@@ -156,7 +145,8 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         
         call.SetCamera(Camera(newCamPose, cam_intrinsics));
 
-        this->optimizeCamera_.Param<core::param::BoolParam>()->SetValue(false);
+        // delete pointers and ensure, that this if branch is executed once until user request
+        this->optimizeCamera_.Param<core::param::BoolParam>()->SetValue(false);     
         delete[] pos0;
     }
 
