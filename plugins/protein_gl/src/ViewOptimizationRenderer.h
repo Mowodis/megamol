@@ -45,10 +45,23 @@ private:
     core::CallerSlot getTargetMeshData_;
     core::CallerSlot getLigandPDBData_;
 
+    /* Output of the targets cut triangel mesh data */
+    core::CalleeSlot _cutTriangleMesh;
+
+    /* Stores the current target molecule object data */
+    geocalls_gl::CallTriMeshDataGL currentTargetData;
+
     /* Module parameters */
     core::param::ParamSlot optimizeCamera_;
 
+    
+
     /* =========== Functions =========== */
+
+    /*
+     * Forwards the mesh data of a target molecule to a 'ModernTrisoupRendererGL'  
+     */
+    bool getDataCallback();
 
     /*
      * Determine the center coordinate (x1,x2,x3) by averaging over all atom positions
@@ -73,8 +86,8 @@ private:
     /* remove all mesh vertices, that do not lay within a certain radius around a center coordinate
      * SIDEEFFECTS 
      */
-    geocalls_gl::CallTriMeshDataGL::Mesh& naiveCavetyCutter(
-        megamol::geocalls_gl::CallTriMeshDataGL::Mesh& mesh, glm::vec3 centrioid, float radius);
+    geocalls_gl::CallTriMeshDataGL::Mesh naiveCavetyCutter(
+        megamol::geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 centrioid, float radius);
 
 
 }; // class Vie//wpointOptimizer

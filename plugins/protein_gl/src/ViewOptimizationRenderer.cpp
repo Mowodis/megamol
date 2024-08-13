@@ -28,7 +28,9 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
         : getTargetMeshData_("getTargetMeshData",
               "Connects the renderer to a data provider to retrieve target mesh data")
         , getLigandPDBData_("getLigandPDBData", "Connects the renderer to a data provider to retrieve lignad mesh data")
-        , optimizeCamera_("OptimizeCamera", "Acts as a button to set the camera to view the ligand binding site") {
+        , cutTriangleMesh_("cutTriangleMesh", "Forwards either the mesh data of a previous 'MSMSMeshLoader' or a reduced version")
+        , optimizeCamera_("OptimizeCamera", "Acts as a button to set the camera to view the ligand binding site")
+        , currentTargetData("currentTargetData", "Stores either the mesh data of a previous 'MSMSMeshLoader' or a reduced version") {
 
     this->getTargetMeshData_.SetCompatibleCall<megamol::geocalls_gl::CallTriMeshDataGLDescription>();
     this->getTargetMeshData_.SetNecessity(megamol::core::AbstractCallSlotPresentation::Necessity::SLOT_REQUIRED);
@@ -38,8 +40,16 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
     this->getLigandPDBData_.SetNecessity(megamol::core::AbstractCallSlotPresentation::Necessity::SLOT_REQUIRED);
     this->MakeSlotAvailable(&this->getLigandPDBData_);
 
+    // the data out slot
+    this->cutTriangleMesh_.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetData", &ViewOptimizationRenderer::Render);
+    this->cutTriangleMesh_.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetExtent", &ViewOptimizationRenderer::GetExtents);
+    this->MakeSlotAvailable(&this->cutTriangleMesh_);
+
     this->optimizeCamera_.SetParameter(new core::param::BoolParam(true));
     this->MakeSlotAvailable(&this->optimizeCamera_);
+
+    this->currentTargetData.SetParameter(new geocalls_gl::CallTriMeshDataGL());
+
 }
 
 ViewOptimizationRenderer::~ViewOptimizationRenderer() {
@@ -53,6 +63,16 @@ bool ViewOptimizationRenderer::create() {
 void ViewOptimizationRenderer::release() {}
 
 bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
+
+    /* ============= Cut provide Target Triangel Mesh Data  ============= */
+
+    //if (this->coloringModeParam0.IsDirty() || this->coloringModeParam1.IsDirty() ||
+    //    this->colorWeightParam.IsDirty() || this->minGradColorParam.IsDirty() ||
+    //    this->midGradColorParam.IsDirty() || this->maxGradColorParam.IsDirty() ||
+    //    this->prevTime != int(ctmd->FrameID()) || reload_colors) {
+
+
+
     /* ============= Set camera position ============= */
 
     // execute this branch for only one tick, then waite until the user sets the parameter to true 
@@ -85,17 +105,8 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
             return false;
         }
 
-        /* ------- Process Target Data ------- */
-        //geocalls_gl::CallTriMeshDataGL::Mesh& cavetyMesh = naiveCavetyCutter();
-
-        cout << "DataType: " << target->Objects()[0].GetColourDataType() << "\n";
-        cout << "Material: " << target->Objects()[0].GetMaterial()->GetBumpMapFileName() << "\n";
-        cout << "Normals: " << target->Objects()[0].GetNormalPointerFloat() << "\n";
-        //cout << "Normals: " << target->Objects()[0].;
-
-        /* ------- Make Naive Camera Calculations ------- */
-
-        // get ligand ceneter coordinates
+        /* ------- Approximate Ligand Radius ------- */
+      
         const unsigned int ligandAtomCount = ligand->AtomCount();
         float* pos0 = new float[ligandAtomCount * 3];
         memcpy(pos0, ligand->AtomPositions(), ligandAtomCount * 3 * sizeof(float));
@@ -116,6 +127,9 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         const float atomRadiusAndGap = 2.0f;
         radius += atomRadiusAndGap;
 
+
+        /* ------- Get Naive Camera Direction ------- */
+
         // get the naive camera direction
         glm::vec3 naiveCamDirection = naiveCameraDirection(target, ligandCenter, radius);
 
@@ -133,6 +147,13 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
     }
 
     return true;
+}
+
+
+bool ViewOptimizationRenderer::getDataCallback() {
+    this->cutTriangleMesh_ = currentTargetData;
+
+    return true
 }
 
 bool ViewOptimizationRenderer::GetExtents(mmstd_gl::CallRender3DGL& call) {
@@ -163,9 +184,9 @@ glm::vec3 ViewOptimizationRenderer::moleculeCenter(float* positions, unsigned in
 
 glm::vec3 ViewOptimizationRenderer::naiveCameraDirection(geocalls_gl::CallTriMeshDataGL* ctmd, const glm::vec3 center, const float radius) {
     // get obj: the (first) object of target caller slot. Used for the vertex data
-    const auto& obj = ctmd->Objects()[0];
-    auto vertCount = obj.GetVertexCount();
-    auto triCount = obj.GetTriCount();
+    const auto& target = ctmd->Objects()[0];
+    auto vertCount = target.GetVertexCount();
+    auto triCount = target.GetTriCount();
 
     // find all target tie mesh vertices that are within the 'radius' aroud the ligand center
     // std::list<unsigned int> selectedVerticesIndex;
@@ -173,8 +194,10 @@ glm::vec3 ViewOptimizationRenderer::naiveCameraDirection(geocalls_gl::CallTriMes
     unsigned int nrSelectedVertices = 0;
 
     for (int i = 0; i < vertCount; i++) {
-        glm::vec3 currentVertex = glm::vec3(obj.GetVertexPointerFloat()[i * 3], obj.GetVertexPointerFloat()[i * 3 + 1],
-            obj.GetVertexPointerFloat()[i * 3 + 2]);
+        glm::vec3 currentVertex =
+            glm::vec3(target.GetVertexPointerFloat()[i * 3],
+                target.GetVertexPointerFloat()[i * 3 + 1],
+                target.GetVertexPointerFloat()[i * 3 + 2]);
 
         if (glm::distance(currentVertex, center) <= radius) {
             naiveCamDirection += glm::normalize(center - currentVertex);
@@ -202,22 +225,54 @@ void ViewOptimizationRenderer::newCallCamera(
     call.SetCamera(Camera(newCamPose, camIntrinsics));
 }
 
-geocalls_gl::CallTriMeshDataGL::Mesh& ViewOptimizationRenderer::naiveCavetyCutter(
-    geocalls_gl::CallTriMeshDataGL::Mesh& mesh, const glm::vec3 ligCenter, const float radius) {
+geocalls_gl::CallTriMeshDataGL::Mesh ViewOptimizationRenderer::naiveCavetyCutter(
+    geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 ligCenter, float radius) {
+
     geocalls_gl::CallTriMeshDataGL::Mesh cutMesh = mesh;
 
     unsigned int vertCount = mesh.GetVertexCount();
-  
+    unsigned int newVertCount = 0;
+
+    
+    // first: count the number of vertices in the sphere given by 'ligCenter' and 'radius'
     for (int i = 0; i < vertCount; i++) {
-        glm::vec3 currentVertex = glm::vec3(mesh.GetVertexPointerFloat()[i * 3], mesh.GetVertexPointerFloat()[i * 3 + 1],
-            mesh.GetVertexPointerFloat()[i * 3 + 2]);
+        glm::vec3 currentVertex =
+            glm::vec3(mesh.GetVertexPointerFloat()[i * 3],
+                mesh.GetVertexPointerFloat()[i * 3 + 1],
+                mesh.GetVertexPointerFloat()[i * 3 + 2]);
 
         if (glm::distance(currentVertex, ligCenter) <= radius) {
-            
+            newVertCount++;
         }
     }
 
-    geocalls_gl::CallTriMeshDataGL::Mesh& cutMeshReference = cutMesh;
+    float* vertices = new float[newVertCount * 3];
+    float* normals = new float[newVertCount * 3];
+    unsigned char* colours = new unsigned char[newVertCount * 3];
 
-    return cutMeshReference;
+    // second: copy all the vertices with normals and color to new arrays
+    unsigned int offset = 0;
+    for (int i = 0; i < vertCount; i++) {
+        glm::vec3 currentVertex =
+            glm::vec3(mesh.GetVertexPointerFloat()[i * 3],
+                mesh.GetVertexPointerFloat()[i * 3 + 1],
+                mesh.GetVertexPointerFloat()[i * 3 + 2]);
+
+        if (glm::distance(currentVertex, ligCenter) <= radius) {
+            for (unsigned int j = 0; j < 3; j++) {
+                vertices[(i - offset) * 3 + j] = mesh.GetVertexPointerFloat()[i * 3 + j];
+                normals[(i - offset) * 3 + j] = mesh.GetNormalPointerFloat()[i * 3 + j];
+                colours[(i - offset) * 3 + j] = mesh.GetColourPointerByte()[i * 3 + j];
+            }
+        }
+        else {
+            offset++;
+        }
+    }
+
+    cutMesh.SetVertexData(newVertCount, vertices, normals, colours, NULL, true);
+    //cutMesh.SetTriangleData()
+
+
+    return cutMesh;
 }
