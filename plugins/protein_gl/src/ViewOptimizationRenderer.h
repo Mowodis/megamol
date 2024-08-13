@@ -13,6 +13,7 @@
 #include "mmcore/view/Camera.h"
 #include "mmstd_gl/renderer/Renderer3DModuleGL.h"
 #include "mmcore/CalleeSlot.h"
+#include "geometry_calls_gl/CallTriMeshDataGL.h"
 
 namespace megamol::protein_gl {
 
@@ -61,16 +62,19 @@ private:
      * Calculate a camera direction vector in a naive manner
      * Summs up the vectors from within range target mesh vertices to the ligand center and normalizes the result
      */
-    //glm::vec3 naiveCameraDirection(megamol::geocalls_gl::CallTriMeshDataGL::Mesh obj, const glm::vec3 center, const float radius);
+    glm::vec3 naiveCameraDirection(megamol::geocalls_gl::CallTriMeshDataGL* obj, const glm::vec3 center, const float radius);
 
     /*
-     * Replace the camera position and direction of a call with new values 
+     * Replace the camera position and direction of a call with new values
+     * SIDEEFFECTS
      */
     void newCallCamera(megamol::mmstd_gl::CallRender3DGL& call, glm::vec3 direction, glm::vec3 ligCenter, float radius, float camDistFactor);
 
-    /* remove all mesh vertices, that do not lay within a certain radius around a center coordinate */
-    //megamol::geocalls_gl::CallTriMeshDataGL::Mesh naiveCavetyCutter(megamol::geocalls_gl::CallTriMeshDataGL::Mesh, glm::vec3, float);
-
+    /* remove all mesh vertices, that do not lay within a certain radius around a center coordinate
+     * SIDEEFFECTS 
+     */
+    geocalls_gl::CallTriMeshDataGL::Mesh& naiveCavetyCutter(
+        megamol::geocalls_gl::CallTriMeshDataGL::Mesh& mesh, glm::vec3 centrioid, float radius);
 
 
 }; // class Vie//wpointOptimizer

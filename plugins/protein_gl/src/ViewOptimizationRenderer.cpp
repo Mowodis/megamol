@@ -85,6 +85,14 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
             return false;
         }
 
+        /* ------- Process Target Data ------- */
+        //geocalls_gl::CallTriMeshDataGL::Mesh& cavetyMesh = naiveCavetyCutter();
+
+        cout << "DataType: " << target->Objects()[0].GetColourDataType() << "\n";
+        cout << "Material: " << target->Objects()[0].GetMaterial()->GetBumpMapFileName() << "\n";
+        cout << "Normals: " << target->Objects()[0].GetNormalPointerFloat() << "\n";
+        //cout << "Normals: " << target->Objects()[0].;
+
         /* ------- Make Naive Camera Calculations ------- */
 
         // get ligand ceneter coordinates
@@ -95,7 +103,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         glm::vec3 ligandCenter = moleculeCenter(pos0, ligandAtomCount);
 
         // get radius, which will be used to select vertices around the ligand center
-         // i.e get max atom distance from ligand center + atom sphere radius + gap of target-ligand
+        // i.e get max atom distance from ligand center + atom sphere radius + gap of target-ligand
         float radius = 0;
         for (int i = 0; i < ligand->AtomCount(); i++) {
             float dist = glm::distance(glm::vec3(pos0[i * 3], pos0[i * 3 + 1], pos0[i * 3 + 2]), ligandCenter);
@@ -108,25 +116,8 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         const float atomRadiusAndGap = 2.0f;
         radius += atomRadiusAndGap;
 
-        // get obj: the (first) object of target caller slot. Used for the vertex data
-        const auto& obj = target->Objects()[0];
-        auto vertCount = obj.GetVertexCount();
-        auto triCount = obj.GetTriCount();
-
-        // find all target tie mesh vertices that are within the 'radius' aroud the ligand center
-        // std::list<unsigned int> selectedVerticesIndex;
-        glm::vec3 naiveCamDirection = glm::vec3(0, 0, 0);
-        unsigned int nrSelectedVertices = 0;
-        for (int i = 0; i < vertCount; i++) {
-            glm::vec3 currentVertex = glm::vec3(obj.GetVertexPointerFloat()[i * 3], obj.GetVertexPointerFloat()[i * 3 + 1], obj.GetVertexPointerFloat()[i * 3 + 2]);
-
-            if (glm::distance(currentVertex, ligandCenter) <= radius) {
-                naiveCamDirection += glm::normalize(ligandCenter - currentVertex);
-                nrSelectedVertices++;
-            }
-        }
-        naiveCamDirection = glm::normalize(naiveCamDirection);
-        cout << "CORDS: " << naiveCamDirection[0] << "," << naiveCamDirection[1] << "," << naiveCamDirection[2];
+        // get the naive camera direction
+        glm::vec3 naiveCamDirection = naiveCameraDirection(target, ligandCenter, radius);
 
         /* ------- Set New Camera ------- */
 
@@ -170,12 +161,39 @@ glm::vec3 ViewOptimizationRenderer::moleculeCenter(float* positions, unsigned in
     return ligandCenter;
 }
 
-void ViewOptimizationRenderer::newCallCamera(mmstd_gl::CallRender3DGL& call, glm::vec3 direction, glm::vec3 ligCenter, float radius, float camDistFactor) {
+glm::vec3 ViewOptimizationRenderer::naiveCameraDirection(geocalls_gl::CallTriMeshDataGL* ctmd, const glm::vec3 center, const float radius) {
+    // get obj: the (first) object of target caller slot. Used for the vertex data
+    const auto& obj = ctmd->Objects()[0];
+    auto vertCount = obj.GetVertexCount();
+    auto triCount = obj.GetTriCount();
+
+    // find all target tie mesh vertices that are within the 'radius' aroud the ligand center
+    // std::list<unsigned int> selectedVerticesIndex;
+    glm::vec3 naiveCamDirection = glm::vec3(0, 0, 0);
+    unsigned int nrSelectedVertices = 0;
+
+    for (int i = 0; i < vertCount; i++) {
+        glm::vec3 currentVertex = glm::vec3(obj.GetVertexPointerFloat()[i * 3], obj.GetVertexPointerFloat()[i * 3 + 1],
+            obj.GetVertexPointerFloat()[i * 3 + 2]);
+
+        if (glm::distance(currentVertex, center) <= radius) {
+            naiveCamDirection += glm::normalize(center - currentVertex);
+            nrSelectedVertices++;
+        }
+    }
+
+    naiveCamDirection = glm::normalize(naiveCamDirection);
+
+    return naiveCamDirection;
+}
+
+void ViewOptimizationRenderer::newCallCamera(
+    mmstd_gl::CallRender3DGL& call, glm::vec3 direction, glm::vec3 ligCenter, float radius, float camDistFactor) {
     // Change the camera position coordinates of the CallRenderer3DGL call
     auto& cam = call.GetCamera();
     Camera::Pose newCamPose = cam.getPose();  // old camera as default
 
-    // camera-ligandcenter distance is _ times the vertex selection radius
+    // camera-ligandcenter distance is 'camDistFactor'-times the vertex selection radius
     newCamPose.position = ligCenter + direction * glm::vec3(radius * camDistFactor);
     newCamPose.direction = -direction;
 
@@ -184,6 +202,22 @@ void ViewOptimizationRenderer::newCallCamera(mmstd_gl::CallRender3DGL& call, glm
     call.SetCamera(Camera(newCamPose, camIntrinsics));
 }
 
-//geocalls_gl::CallTriMeshDataGL::Mesh naiveCavetyCutter(geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 ligCenter) {
+geocalls_gl::CallTriMeshDataGL::Mesh& ViewOptimizationRenderer::naiveCavetyCutter(
+    geocalls_gl::CallTriMeshDataGL::Mesh& mesh, const glm::vec3 ligCenter, const float radius) {
+    geocalls_gl::CallTriMeshDataGL::Mesh cutMesh = mesh;
 
-//}
+    unsigned int vertCount = mesh.GetVertexCount();
+  
+    for (int i = 0; i < vertCount; i++) {
+        glm::vec3 currentVertex = glm::vec3(mesh.GetVertexPointerFloat()[i * 3], mesh.GetVertexPointerFloat()[i * 3 + 1],
+            mesh.GetVertexPointerFloat()[i * 3 + 2]);
+
+        if (glm::distance(currentVertex, ligCenter) <= radius) {
+            
+        }
+    }
+
+    geocalls_gl::CallTriMeshDataGL::Mesh& cutMeshReference = cutMesh;
+
+    return cutMeshReference;
+}
