@@ -40,6 +40,14 @@ protected:
     bool GetExtents(mmstd_gl::CallRender3DGL& call) override;
     bool Render(mmstd_gl::CallRender3DGL& call) override;
 
+    /** The bounding box */
+    vislib::math::Cuboid<float> bbox;
+
+    bool reload_colors;
+
+    /** The data update hash */
+    SIZE_T datahash;
+
 private:
     /* Require the mesh data from protein and ligand*/
     core::CallerSlot getTargetMeshData_;
@@ -48,20 +56,24 @@ private:
     /* Output of the targets cut triangel mesh data */
     core::CalleeSlot _cutTriangleMesh;
 
-    /* Stores the current target molecule object data */
-    geocalls_gl::CallTriMeshDataGL currentTargetData;
-
     /* Module parameters */
     core::param::ParamSlot optimizeCamera_;
 
-    
+    /* Stores the current target molecule object data */
+    geocalls_gl::CallTriMeshDataGL* currentTargetData;
 
     /* =========== Functions =========== */
 
     /*
-     * Forwards the mesh data of a target molecule to a 'ModernTrisoupRendererGL'  
+     * Relays the mesh data of a target molecule to a 'ModernTrisoupRendererGL'
      */
-    bool getDataCallback();
+    bool getDataCallback(core::Call& caller);
+
+
+    /*
+     * Extend function for molecular mesh data relay puproses
+     */
+    bool getExtentCallback(core::Call& caller);
 
     /*
      * Determine the center coordinate (x1,x2,x3) by averaging over all atom positions

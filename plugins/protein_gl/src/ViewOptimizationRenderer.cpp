@@ -28,9 +28,12 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
         : getTargetMeshData_("getTargetMeshData",
               "Connects the renderer to a data provider to retrieve target mesh data")
         , getLigandPDBData_("getLigandPDBData", "Connects the renderer to a data provider to retrieve lignad mesh data")
-        , cutTriangleMesh_("cutTriangleMesh", "Forwards either the mesh data of a previous 'MSMSMeshLoader' or a reduced version")
+        , _cutTriangleMesh("cutTriangleMesh", "Forwards either the mesh data of a previous 'MSMSMeshLoader' or a reduced version")
         , optimizeCamera_("OptimizeCamera", "Acts as a button to set the camera to view the ligand binding site")
-        , currentTargetData("currentTargetData", "Stores either the mesh data of a previous 'MSMSMeshLoader' or a reduced version") {
+        , currentTargetData(new geocalls_gl::CallTriMeshDataGL())
+        , bbox(-1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f)
+        , datahash(0)
+        , reload_colors(true) {
 
     this->getTargetMeshData_.SetCompatibleCall<megamol::geocalls_gl::CallTriMeshDataGLDescription>();
     this->getTargetMeshData_.SetNecessity(megamol::core::AbstractCallSlotPresentation::Necessity::SLOT_REQUIRED);
@@ -41,18 +44,16 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
     this->MakeSlotAvailable(&this->getLigandPDBData_);
 
     // the data out slot
-    this->cutTriangleMesh_.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetData", &ViewOptimizationRenderer::Render);
-    this->cutTriangleMesh_.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetExtent", &ViewOptimizationRenderer::GetExtents);
-    this->MakeSlotAvailable(&this->cutTriangleMesh_);
+    this->_cutTriangleMesh.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetData", &ViewOptimizationRenderer::getDataCallback);
+    this->_cutTriangleMesh.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetExtent", &ViewOptimizationRenderer::getExtentCallback);
+    this->MakeSlotAvailable(&this->_cutTriangleMesh);
 
     this->optimizeCamera_.SetParameter(new core::param::BoolParam(true));
     this->MakeSlotAvailable(&this->optimizeCamera_);
-
-    this->currentTargetData.SetParameter(new geocalls_gl::CallTriMeshDataGL());
-
 }
 
 ViewOptimizationRenderer::~ViewOptimizationRenderer() {
+    delete[] currentTargetData;
     this->Release();
 }
 
@@ -70,8 +71,6 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
     //    this->colorWeightParam.IsDirty() || this->minGradColorParam.IsDirty() ||
     //    this->midGradColorParam.IsDirty() || this->maxGradColorParam.IsDirty() ||
     //    this->prevTime != int(ctmd->FrameID()) || reload_colors) {
-
-
 
     /* ============= Set camera position ============= */
 
@@ -149,13 +148,6 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
     return true;
 }
 
-
-bool ViewOptimizationRenderer::getDataCallback() {
-    this->cutTriangleMesh_ = currentTargetData;
-
-    return true
-}
-
 bool ViewOptimizationRenderer::GetExtents(mmstd_gl::CallRender3DGL& call) {
     auto ctmd = this->getTargetMeshData_.CallAs<geocalls_gl::CallTriMeshDataGL>();
     if (ctmd == nullptr) {
@@ -172,6 +164,56 @@ bool ViewOptimizationRenderer::GetExtents(mmstd_gl::CallRender3DGL& call) {
 
     return true;
 }
+
+/* =============== Necessary Methods For Data Relay=============== */
+
+bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
+    geocalls_gl::CallTriMeshDataGL* ctmd = dynamic_cast<geocalls_gl::CallTriMeshDataGL*>(&caller);
+    if (ctmd == NULL)
+        return false;
+
+    geocalls_gl::CallTriMeshDataGL* targetCtmd =
+        this->getTargetMeshData_.CallAs<megamol::geocalls_gl::CallTriMeshDataGL>();
+    if (targetCtmd == nullptr) {
+        return false;
+    }
+    targetCtmd->SetFrameID(float(ctmd->FrameID()));
+    if (!(*targetCtmd)(1)) {
+        return false;
+    }
+
+    targetCtmd->SetFrameID(float(ctmd->FrameID()));
+    if (!(*targetCtmd)(0)) {
+        return false;
+    }
+    if (targetCtmd) {
+        ctmd = targetCtmd;
+    }
+
+    //this->cutTriangleMesh_ = currentTargetData;
+    //ctmd->SetObjects(1, ctmdTarget->Objects());
+
+    
+
+    return true;
+}
+
+bool ViewOptimizationRenderer::getExtentCallback(core::Call& caller) {
+    geocalls_gl::CallTriMeshDataGL* ctmd = dynamic_cast<geocalls_gl::CallTriMeshDataGL*>(&caller);
+    if (ctmd == NULL)
+        return false;
+
+    unsigned int frameCnt = 1;
+
+    ctmd->SetDataHash(this->datahash);
+    bool refresh = false;
+    ctmd->SetExtent(frameCnt, this->bbox.Left(), this->bbox.Bottom(), this->bbox.Back(), this->bbox.Right(),
+        this->bbox.Top(), this->bbox.Front());
+    
+    return true;
+}
+
+/* =============== Supporting Functions =============== */
 
 glm::vec3 ViewOptimizationRenderer::moleculeCenter(float* positions, unsigned int atomCount) {
     glm::vec3 ligandCenter = glm::vec3(0, 0, 0);
