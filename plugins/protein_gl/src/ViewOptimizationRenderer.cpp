@@ -22,15 +22,13 @@ using namespace megamol::protein_calls;
 
 using namespace megamol::core::view;
 
-using namespace std;
-
 ViewOptimizationRenderer::ViewOptimizationRenderer()
         : getTargetMeshData_("getTargetMeshData",
               "Connects the renderer to a data provider to retrieve target mesh data")
         , getLigandPDBData_("getLigandPDBData", "Connects the renderer to a data provider to retrieve lignad mesh data")
         , _cutTriangleMesh("cutTriangleMesh", "Forwards either the mesh data of a previous 'MSMSMeshLoader' or a reduced version")
         , optimizeCamera_("OptimizeCamera", "Acts as a button to set the camera to view the ligand binding site")
-        , currentTargetData(new geocalls_gl::CallTriMeshDataGL())
+        , currentTargetMeshData()
         , bbox(-1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f)
         , datahash(0)
         , reload_colors(true) {
@@ -53,7 +51,6 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
 }
 
 ViewOptimizationRenderer::~ViewOptimizationRenderer() {
-    delete[] currentTargetData;
     this->Release();
 }
 
@@ -132,6 +129,14 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         // get the naive camera direction
         glm::vec3 naiveCamDirection = naiveCameraDirection(target, ligandCenter, radius);
 
+        /* ------- Cut The Target Mesh ------- */
+
+        //this->currentTargetMeshData = &naiveCavetyCutter(target->Objects()[0], ligandCenter, radius);
+        std::cout << "Object atrebute nr: " << target->Objects()[0].GetVertexAttribCount() << "\n";
+        std::cout << "Object triangel Pointers: " << target->Objects()[0].GetTriIndexPointerUInt32()[4] << "\n";
+        this->currentTargetMeshData = target->Objects();
+        
+
         /* ------- Set New Camera ------- */
 
         const float camDistFactor = 16.0f;
@@ -181,19 +186,20 @@ bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
     if (!(*targetCtmd)(1)) {
         return false;
     }
-
     targetCtmd->SetFrameID(float(ctmd->FrameID()));
     if (!(*targetCtmd)(0)) {
         return false;
     }
-    if (targetCtmd) {
-        ctmd = targetCtmd;
+
+    // initialize the container 'currentTargetMeshData' with the unaltered target mesh data
+    static bool isInitialized = false;
+    if (!isInitialized) {
+        this->currentTargetMeshData = targetCtmd->Objects();
+        isInitialized = true;
     }
 
-    //this->cutTriangleMesh_ = currentTargetData;
-    //ctmd->SetObjects(1, ctmdTarget->Objects());
-
-    
+    // pass on the (possibly cut) target mesh data  
+    ctmd->SetObjects(1, this->currentTargetMeshData);
 
     return true;
 }
@@ -272,12 +278,14 @@ geocalls_gl::CallTriMeshDataGL::Mesh ViewOptimizationRenderer::naiveCavetyCutter
 
     geocalls_gl::CallTriMeshDataGL::Mesh cutMesh = mesh;
 
-    unsigned int vertCount = mesh.GetVertexCount();
+    const unsigned int vertCount = mesh.GetVertexCount();
     unsigned int newVertCount = 0;
+    const unsigned int triangelCount = mesh.GetTriCount();
+    unsigned int newTriangelCount = 0;
 
-    
-    // first: count the number of vertices in the sphere given by 'ligCenter' and 'radius'
-    for (int i = 0; i < vertCount; i++) {
+    // first: count the number of vertices in the sphere given by 'ligCenter' and 'radius' and note them
+
+    for (unsigned int i = 0; i < vertCount; i++) {
         glm::vec3 currentVertex =
             glm::vec3(mesh.GetVertexPointerFloat()[i * 3],
                 mesh.GetVertexPointerFloat()[i * 3 + 1],
@@ -292,9 +300,12 @@ geocalls_gl::CallTriMeshDataGL::Mesh ViewOptimizationRenderer::naiveCavetyCutter
     float* normals = new float[newVertCount * 3];
     unsigned char* colours = new unsigned char[newVertCount * 3];
 
-    // second: copy all the vertices with normals and color to new arrays
+    // second: copy all the used vertices with normals and color to new arrays.
+    // note the old vertex index
+    unsigned int* oldVertIndex = new unsigned int[newVertCount];    // index map
+
     unsigned int offset = 0;
-    for (int i = 0; i < vertCount; i++) {
+    for (unsigned int i = 0; i < vertCount; i++) {
         glm::vec3 currentVertex =
             glm::vec3(mesh.GetVertexPointerFloat()[i * 3],
                 mesh.GetVertexPointerFloat()[i * 3 + 1],
@@ -306,15 +317,43 @@ geocalls_gl::CallTriMeshDataGL::Mesh ViewOptimizationRenderer::naiveCavetyCutter
                 normals[(i - offset) * 3 + j] = mesh.GetNormalPointerFloat()[i * 3 + j];
                 colours[(i - offset) * 3 + j] = mesh.GetColourPointerByte()[i * 3 + j];
             }
+
+            oldVertIndex[i - offset] = i;
         }
         else {
             offset++;
         }
     }
 
+    // first: determine which triangles are still valid under the new set of vertices
+    const unsigned int* triangles = mesh.GetTriIndexPointerUInt32();
+    for (unsigned int i = 0; i < triangelCount; i++) {
+        if (inArray(oldVertIndex, triangles[i * 3], newVertCount)
+            && inArray(oldVertIndex, triangles[i * 3 + 1], newVertCount)
+            && inArray(oldVertIndex, triangles[i * 3 + 2], newVertCount)) {
+
+
+
+
+
+
+        }
+    }
+
     cutMesh.SetVertexData(newVertCount, vertices, normals, colours, NULL, true);
     //cutMesh.SetTriangleData()
 
+    delete[] oldVertIndex, triangles;
 
     return cutMesh;
+}
+
+bool ViewOptimizationRenderer::inArray(unsigned int* arr, unsigned int element, unsigned int arrSize) {
+    for (unsigned int i = 0; i < arrSize; i++) {
+        if (arr[i] = element) {
+            return true;
+        }
+    }
+
+    return false;
 }

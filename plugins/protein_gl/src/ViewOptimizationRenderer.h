@@ -60,7 +60,7 @@ private:
     core::param::ParamSlot optimizeCamera_;
 
     /* Stores the current target molecule object data */
-    geocalls_gl::CallTriMeshDataGL* currentTargetData;
+    const geocalls_gl::CallTriMeshDataGL::Mesh* currentTargetMeshData;
 
     /* =========== Functions =========== */
 
@@ -101,6 +101,10 @@ private:
     geocalls_gl::CallTriMeshDataGL::Mesh naiveCavetyCutter(
         megamol::geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 centrioid, float radius);
 
+    /*
+     * checks if an element is contained within an array
+     */
+    bool inArray(unsigned int* arr, unsigned int element, unsigned int arrSize);
 
 }; // class Vie//wpointOptimizer
 
