@@ -6,33 +6,37 @@
 
 #include "ViewOptimizationRenderer.h"
 
-#include <glm/glm.hpp>
-
-#include "geometry_calls_gl/CallTriMeshDataGL.h"
-#include "mmcore/param/FloatParam.h"
-#include "mmcore/view/Camera.h"
-#include "mmstd_gl/renderer/CallRender3DGL.h"
-
 #include "mmstd_gl/view/View3DGL.h"
 #include "protein_calls/MolecularDataCall.h"
+#include "compositing_gl/CompositingCalls.h"
 
-using namespace megamol;
 using namespace megamol::protein_gl;
-using namespace megamol::protein_calls;
-
-using namespace megamol::core::view;
 
 ViewOptimizationRenderer::ViewOptimizationRenderer()
         : getTargetMeshData_("getTargetMeshData",
               "Connects the renderer to a data provider to retrieve target mesh data")
         , getLigandPDBData_("getLigandPDBData", "Connects the renderer to a data provider to retrieve lignad mesh data")
+        , getTexture_("InputTexture", "Access texture that is used to calulate the Viewpoint Entropy")
         , _cutTriangleMesh("cutTriangleMesh", "Forwards either the mesh data of a previous 'MSMSMeshLoader' or a reduced version")
-        , optimizeCamera_("OptimizeCamera", "Acts as a button to set the camera to view the ligand binding site")
+        , optimizeCamera("optimizeCamera", "Acts as a button to set the camera to view the ligand binding site")
+        , renderTargetMeshModeParam("targetMeshRenderMode", "The target mesh rendering mode.")
         , currentTargetMeshData()
+        , currentTargetMeshRenderMode()
         , bbox(-1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f)
         , datahash(0)
         , reload_colors(true) {
+    // parameters
+    this->optimizeCamera.SetParameter(new core::param::BoolParam(true));
+    this->MakeSlotAvailable(&this->optimizeCamera);
 
+    this->currentTargetMeshRenderMode = WHOLE_MESH;
+    megamol::core::param::EnumParam* ctmrm = new megamol::core::param::EnumParam(int(this->currentTargetMeshRenderMode));
+    ctmrm->SetTypePair(WHOLE_MESH, "whole mesh");
+    ctmrm->SetTypePair(NAIVE_CAVETY, "naive cavety");
+    this->renderTargetMeshModeParam << ctmrm;
+    this->MakeSlotAvailable(&this->renderTargetMeshModeParam);
+
+    // data in slot(s)
     this->getTargetMeshData_.SetCompatibleCall<megamol::geocalls_gl::CallTriMeshDataGLDescription>();
     this->getTargetMeshData_.SetNecessity(megamol::core::AbstractCallSlotPresentation::Necessity::SLOT_REQUIRED);
     this->MakeSlotAvailable(&getTargetMeshData_);
@@ -41,13 +45,13 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
     this->getLigandPDBData_.SetNecessity(megamol::core::AbstractCallSlotPresentation::Necessity::SLOT_REQUIRED);
     this->MakeSlotAvailable(&this->getLigandPDBData_);
 
-    // the data out slot
+    this->getTexture_.SetCompatibleCall<megamol::compositing_gl::CallTexture2DDescription>();
+    this->MakeSlotAvailable(&this->getTexture_);
+
+    // data out slot(s)
     this->_cutTriangleMesh.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetData", &ViewOptimizationRenderer::getDataCallback);
     this->_cutTriangleMesh.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetExtent", &ViewOptimizationRenderer::getExtentCallback);
     this->MakeSlotAvailable(&this->_cutTriangleMesh);
-
-    this->optimizeCamera_.SetParameter(new core::param::BoolParam(true));
-    this->MakeSlotAvailable(&this->optimizeCamera_);
 }
 
 ViewOptimizationRenderer::~ViewOptimizationRenderer() {
@@ -72,11 +76,11 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
     /* ============= Set camera position ============= */
 
     // execute this branch for only one tick, then waite until the user sets the parameter to true 
-    if (this->optimizeCamera_.Param<core::param::BoolParam>()->Value()) {
+    if (this->optimizeCamera.Param<core::param::BoolParam>()->Value()) {
 
         // Calculate naive camera position based on ligand center 
         /* ------- Get Ligand Data ------- */
-        MolecularDataCall* ligand = this->getLigandPDBData_.CallAs<MolecularDataCall>();
+        protein_calls::MolecularDataCall* ligand = this->getLigandPDBData_.CallAs<protein_calls::MolecularDataCall>();
         if (ligand == NULL)
             return false;
 
@@ -129,19 +133,23 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         // get the naive camera direction
         glm::vec3 naiveCamDirection = naiveCameraDirection(target, ligandCenter, radius);
 
+        /* ------- Update Parameters ------- */
+
+        // Update 'currentTargetMeshRenderMode' if necessary 
+        this->UpdateParameters();
+
         /* ------- Cut The Target Mesh ------- */
-        this->currentTargetMeshData = naiveCavetyCutter(target->Objects()[0], ligandCenter, radius);
-        //this->currentTargetMeshData = target->Objects();
 
-        std::cout << "Object atrebute nr: " << currentTargetMeshData->GetVertexAttribCount() << "\n";
-        std::cout << "Object triangel Pointers: " << currentTargetMeshData->GetTriIndexPointerUInt32()[4] << "\n";
-
-
-        std::cout << "Vertex Attribute Count: " << currentTargetMeshData->GetVertexAttribCount() << "\n";
-        std::cout << "Vertex Attribute dt 0 : " << currentTargetMeshData->GetVertexAttribDataType(0) << "\n";     // 3 -> DT_UINT32
-        std::cout << "Vertex Attribute dt 1 : " << currentTargetMeshData->GetVertexAttribDataType(1) << "\n";     // 6 -> DT_float
-        std::cout << "Vertex Attribute 0 : " << currentTargetMeshData->GetVertexAttribPointerUInt32(0)[0] << "\n";
-        std::cout << "Vertex Attribute 1 : " << currentTargetMeshData->GetVertexAttribPointerFloat(1)[0] << "\n";
+        // decide which mesh will be passed on to rendering
+        std::cout << "Current Mesh Render Mode: " << currentTargetMeshRenderMode << "\n";
+        //switch (static_cast<MeshRenderMode>(int(this->renderTargetMeshModeParam.Param<megamol::core::param::EnumParam>()->Value()))) {
+        switch (currentTargetMeshRenderMode) {
+            case NAIVE_CAVETY:
+                this->currentTargetMeshData = naiveCavetyCutter(target->Objects()[0], ligandCenter, radius);
+                break;
+            case WHOLE_MESH :
+                this->currentTargetMeshData = target->Objects();
+        }
 
         /* ------- Set New Camera ------- */
 
@@ -152,7 +160,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         /* ------- Cleanup & Global Value(s) ------- */
 
         // delete pointers and ensure, that this if branch is executed once until user request
-        this->optimizeCamera_.Param<core::param::BoolParam>()->SetValue(false);     
+        this->optimizeCamera.Param<core::param::BoolParam>()->SetValue(false);     
         delete[] pos0;
     }
 
@@ -176,7 +184,7 @@ bool ViewOptimizationRenderer::GetExtents(mmstd_gl::CallRender3DGL& call) {
     return true;
 }
 
-/* =============== Necessary Methods For Data Relay=============== */
+/* =============== Necessary Methods For Data Relay =============== */
 
 bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
     geocalls_gl::CallTriMeshDataGL* ctmd = dynamic_cast<geocalls_gl::CallTriMeshDataGL*>(&caller);
@@ -225,6 +233,20 @@ bool ViewOptimizationRenderer::getExtentCallback(core::Call& caller) {
     return true;
 }
 
+/* =============== Parameters =============== */
+
+/*
+ * Updates all module parameters 
+ */
+void ViewOptimizationRenderer::UpdateParameters() {
+    // target mesh rendering mode param
+    std::cout << "Is Param dirty? : " << this->renderTargetMeshModeParam.IsDirty() << "\n";
+    if (this->renderTargetMeshModeParam.IsDirty()) {
+        this->currentTargetMeshRenderMode =
+            static_cast<MeshRenderMode>(int(this->renderTargetMeshModeParam.Param<megamol::core::param::EnumParam>()->Value()));
+    }
+}
+
 /* =============== Supporting Functions =============== */
 
 glm::vec3 ViewOptimizationRenderer::moleculeCenter(float* positions, unsigned int atomCount) {
@@ -267,18 +289,18 @@ void ViewOptimizationRenderer::newCallCamera(
     mmstd_gl::CallRender3DGL& call, glm::vec3 direction, glm::vec3 ligCenter, float radius, float camDistFactor) {
     // Change the camera position coordinates of the CallRenderer3DGL call
     auto& cam = call.GetCamera();
-    Camera::Pose newCamPose = cam.getPose();  // old camera as default
+    core::view::Camera::Pose newCamPose = cam.getPose();  // old camera as default
 
     // camera-ligandcenter distance is 'camDistFactor'-times the vertex selection radius
     newCamPose.position = ligCenter + direction * glm::vec3(radius * camDistFactor);
     newCamPose.direction = -direction;
 
-    const auto& camIntrinsics = cam.get<Camera::PerspectiveParameters>();
+    const auto& camIntrinsics = cam.get<core::view::Camera::PerspectiveParameters>();
 
-    call.SetCamera(Camera(newCamPose, camIntrinsics));
+    call.SetCamera(core::view::Camera(newCamPose, camIntrinsics));
 }
 
-geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCavetyCutter(
+megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCavetyCutter(
     geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 ligCenter, float radius) {
 
     geocalls_gl::CallTriMeshDataGL::Mesh* cutMesh = new geocalls_gl::CallTriMeshDataGL::Mesh();
@@ -302,7 +324,7 @@ geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCavetyCutte
     float* vertices = new float[newVertCount * 3];
     float* normals = new float[newVertCount * 3];
     unsigned char* colours = new unsigned char[newVertCount * 3];
-    // assumes 'mesh.GetVertexAttribCount' == 2 with 'AttribID 0' = atomIndex and 'AttribID 1 = values'
+    // assumes 'mesh.GetVertexAttribCount' == 2 with 'AttribID 0' = atomIndex and 'AttribID 1' = values
     unsigned int* atomIndex = new unsigned int[newVertCount];
     float* values = new float[newVertCount];
 

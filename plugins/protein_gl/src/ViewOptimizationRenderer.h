@@ -19,6 +19,13 @@ namespace megamol::protein_gl {
 
 class ViewOptimizationRenderer : public mmstd_gl::Renderer3DModuleGL {
 public:
+
+    /* Encodes the different working states of the target molecule triangle mesh */
+    enum MeshRenderMode {
+        WHOLE_MESH = 0,
+        NAIVE_CAVETY = 1
+    };
+
     static const char* ClassName() {
         return "ViewOptimizationRenderer";
     }
@@ -49,18 +56,24 @@ protected:
     SIZE_T datahash;
 
 private:
-    /* Require the mesh data from protein and ligand*/
+    /* Require the mesh data from protein and ligand, as well as a texture*/
     core::CallerSlot getTargetMeshData_;
     core::CallerSlot getLigandPDBData_;
+    core::CallerSlot getTexture_;
 
     /* Output of the targets cut triangel mesh data */
     core::CalleeSlot _cutTriangleMesh;
 
     /* Module parameters */
-    core::param::ParamSlot optimizeCamera_;
+    core::param::ParamSlot optimizeCamera;
+    /** parameter slot for mesh rendering mode */
+    megamol::core::param::ParamSlot renderTargetMeshModeParam;
 
     /* Stores the current target molecule object data */
     const geocalls_gl::CallTriMeshDataGL::Mesh* currentTargetMeshData;
+
+    /* Stores the mode that determines in which way the targets triangle mesh is being rendered */
+    MeshRenderMode currentTargetMeshRenderMode;
 
     /* =========== Functions =========== */
 
@@ -74,6 +87,11 @@ private:
      * Extend function for molecular mesh data relay puproses
      */
     bool getExtentCallback(core::Call& caller);
+
+    /**
+     * Update parameter slots.
+     */
+    void UpdateParameters();
 
     /*
      * Determine the center coordinate (x1,x2,x3) by averaging over all atom positions
@@ -106,6 +124,7 @@ private:
      * If not found, returns the length of the array
      */
     unsigned int inArray(unsigned int* arr, unsigned int element, unsigned int arrSize);
+
 
 }; // class Vie//wpointOptimizer
 
