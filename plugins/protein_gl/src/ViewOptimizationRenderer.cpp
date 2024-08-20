@@ -130,12 +130,18 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         glm::vec3 naiveCamDirection = naiveCameraDirection(target, ligandCenter, radius);
 
         /* ------- Cut The Target Mesh ------- */
+        this->currentTargetMeshData = naiveCavetyCutter(target->Objects()[0], ligandCenter, radius);
+        //this->currentTargetMeshData = target->Objects();
 
-        //this->currentTargetMeshData = &naiveCavetyCutter(target->Objects()[0], ligandCenter, radius);
-        std::cout << "Object atrebute nr: " << target->Objects()[0].GetVertexAttribCount() << "\n";
-        std::cout << "Object triangel Pointers: " << target->Objects()[0].GetTriIndexPointerUInt32()[4] << "\n";
-        this->currentTargetMeshData = target->Objects();
-        
+        std::cout << "Object atrebute nr: " << currentTargetMeshData->GetVertexAttribCount() << "\n";
+        std::cout << "Object triangel Pointers: " << currentTargetMeshData->GetTriIndexPointerUInt32()[4] << "\n";
+
+
+        std::cout << "Vertex Attribute Count: " << currentTargetMeshData->GetVertexAttribCount() << "\n";
+        std::cout << "Vertex Attribute dt 0 : " << currentTargetMeshData->GetVertexAttribDataType(0) << "\n";     // 3 -> DT_UINT32
+        std::cout << "Vertex Attribute dt 1 : " << currentTargetMeshData->GetVertexAttribDataType(1) << "\n";     // 6 -> DT_float
+        std::cout << "Vertex Attribute 0 : " << currentTargetMeshData->GetVertexAttribPointerUInt32(0)[0] << "\n";
+        std::cout << "Vertex Attribute 1 : " << currentTargetMeshData->GetVertexAttribPointerFloat(1)[0] << "\n";
 
         /* ------- Set New Camera ------- */
 
@@ -237,7 +243,6 @@ glm::vec3 ViewOptimizationRenderer::naiveCameraDirection(geocalls_gl::CallTriMes
     auto triCount = target.GetTriCount();
 
     // find all target tie mesh vertices that are within the 'radius' aroud the ligand center
-    // std::list<unsigned int> selectedVerticesIndex;
     glm::vec3 naiveCamDirection = glm::vec3(0, 0, 0);
     unsigned int nrSelectedVertices = 0;
 
@@ -273,20 +278,18 @@ void ViewOptimizationRenderer::newCallCamera(
     call.SetCamera(Camera(newCamPose, camIntrinsics));
 }
 
-geocalls_gl::CallTriMeshDataGL::Mesh ViewOptimizationRenderer::naiveCavetyCutter(
+geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCavetyCutter(
     geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 ligCenter, float radius) {
 
-    geocalls_gl::CallTriMeshDataGL::Mesh cutMesh = mesh;
+    geocalls_gl::CallTriMeshDataGL::Mesh* cutMesh = new geocalls_gl::CallTriMeshDataGL::Mesh();
 
     const unsigned int vertCount = mesh.GetVertexCount();
     unsigned int newVertCount = 0;
-    const unsigned int triangelCount = mesh.GetTriCount();
-    unsigned int newTriangelCount = 0;
 
-    // first: count the number of vertices in the sphere given by 'ligCenter' and 'radius' and note them
-
+    // first: count the number of vertices that lay within the radius around the ligand center
+    glm::vec3 currentVertex;
     for (unsigned int i = 0; i < vertCount; i++) {
-        glm::vec3 currentVertex =
+        currentVertex =
             glm::vec3(mesh.GetVertexPointerFloat()[i * 3],
                 mesh.GetVertexPointerFloat()[i * 3 + 1],
                 mesh.GetVertexPointerFloat()[i * 3 + 2]);
@@ -299,14 +302,17 @@ geocalls_gl::CallTriMeshDataGL::Mesh ViewOptimizationRenderer::naiveCavetyCutter
     float* vertices = new float[newVertCount * 3];
     float* normals = new float[newVertCount * 3];
     unsigned char* colours = new unsigned char[newVertCount * 3];
+    // assumes 'mesh.GetVertexAttribCount' == 2 with 'AttribID 0' = atomIndex and 'AttribID 1 = values'
+    unsigned int* atomIndex = new unsigned int[newVertCount];
+    float* values = new float[newVertCount];
+
+    unsigned int* oldVertIndices = new unsigned int[newVertCount];
 
     // second: copy all the used vertices with normals and color to new arrays.
-    // note the old vertex index
-    unsigned int* oldVertIndex = new unsigned int[newVertCount];    // index map
-
+    // note the old vertex indices
     unsigned int offset = 0;
     for (unsigned int i = 0; i < vertCount; i++) {
-        glm::vec3 currentVertex =
+        currentVertex =
             glm::vec3(mesh.GetVertexPointerFloat()[i * 3],
                 mesh.GetVertexPointerFloat()[i * 3 + 1],
                 mesh.GetVertexPointerFloat()[i * 3 + 2]);
@@ -318,42 +324,59 @@ geocalls_gl::CallTriMeshDataGL::Mesh ViewOptimizationRenderer::naiveCavetyCutter
                 colours[(i - offset) * 3 + j] = mesh.GetColourPointerByte()[i * 3 + j];
             }
 
-            oldVertIndex[i - offset] = i;
+            newVertCount++;
+            oldVertIndices[i - offset] = i;
+            atomIndex[i - offset] = mesh.GetVertexAttribPointerUInt32(0)[i];
+            values[i - offset] = mesh.GetVertexAttribPointerFloat(1)[i];
         }
         else {
             offset++;
         }
     }
 
-    // first: determine which triangles are still valid under the new set of vertices
-    const unsigned int* triangles = mesh.GetTriIndexPointerUInt32();
-    for (unsigned int i = 0; i < triangelCount; i++) {
-        if (inArray(oldVertIndex, triangles[i * 3], newVertCount)
-            && inArray(oldVertIndex, triangles[i * 3 + 1], newVertCount)
-            && inArray(oldVertIndex, triangles[i * 3 + 2], newVertCount)) {
+    const unsigned int faceCount = mesh.GetTriCount();
+    unsigned int newFaceCount = 0;
 
+    // determine which triangles are still valid under the new set of vertices and copy those that are
+    const unsigned int* faces = mesh.GetTriIndexPointerUInt32();
+    std::list<unsigned int> newFacesList;
 
+    unsigned int vertIndx[3];
+    for (unsigned int i = 0; i < faceCount; i++) {
+        for (unsigned int j = 0; j < 3; j++) {
+            vertIndx[j] = inArray(oldVertIndices, faces[i * 3 + j], newVertCount);
+        }
 
-
-
-
+        if (vertIndx[0] != newVertCount
+            && vertIndx[1] != newVertCount
+            && vertIndx[2] != newVertCount) {
+            for (unsigned int j = 0; j < 3; j++) {
+                newFacesList.push_back(vertIndx[j]);
+            }
+            newFaceCount++;
         }
     }
+    unsigned int* newFaces = new unsigned int[newFaceCount * 3];
+    std::copy(newFacesList.begin(), newFacesList.end(), newFaces);
 
-    cutMesh.SetVertexData(newVertCount, vertices, normals, colours, NULL, true);
-    //cutMesh.SetTriangleData()
+    // initialize the new mesh with the cut data
+    cutMesh->SetVertexData(newVertCount, vertices, normals, colours, NULL, true);
+    cutMesh->SetTriangleData(newFaceCount, newFaces, true);
+    cutMesh->AddVertexAttribPointer(atomIndex);
+    cutMesh->AddVertexAttribPointer(values);
+    cutMesh->SetMaterial(NULL);
 
-    delete[] oldVertIndex, triangles;
+    delete[] oldVertIndices, faces;
 
     return cutMesh;
 }
 
-bool ViewOptimizationRenderer::inArray(unsigned int* arr, unsigned int element, unsigned int arrSize) {
+unsigned int ViewOptimizationRenderer::inArray(unsigned int* arr, unsigned int element, unsigned int arrSize) {
     for (unsigned int i = 0; i < arrSize; i++) {
-        if (arr[i] = element) {
-            return true;
+        if (arr[i] == element) {
+            return i;
         }
     }
 
-    return false;
+    return arrSize;
 }

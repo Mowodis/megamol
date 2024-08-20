@@ -98,13 +98,14 @@ private:
     /* remove all mesh vertices, that do not lay within a certain radius around a center coordinate
      * SIDEEFFECTS 
      */
-    geocalls_gl::CallTriMeshDataGL::Mesh naiveCavetyCutter(
+    geocalls_gl::CallTriMeshDataGL::Mesh* naiveCavetyCutter(
         megamol::geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 centrioid, float radius);
 
     /*
-     * checks if an element is contained within an array
+     * checks if an element is contained within an array and returns its Index
+     * If not found, returns the length of the array
      */
-    bool inArray(unsigned int* arr, unsigned int element, unsigned int arrSize);
+    unsigned int inArray(unsigned int* arr, unsigned int element, unsigned int arrSize);
 
 }; // class Vie//wpointOptimizer
 
