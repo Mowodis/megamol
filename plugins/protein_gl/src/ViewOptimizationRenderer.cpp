@@ -19,22 +19,29 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
         , getTexture_("InputTexture", "Access texture that is used to calulate the Viewpoint Entropy")
         , _cutTriangleMesh("cutTriangleMesh", "Forwards either the mesh data of a previous 'MSMSMeshLoader' or a reduced version")
         , optimizeCamera("optimizeCamera", "Acts as a button to set the camera to view the ligand binding site")
+        , refreshTargetMesh("refreshTargetMesh", "Acts as a button to refresh/recalculate the rendered target triangle mesh")
         , renderTargetMeshModeParam("targetMeshRenderMode", "The target mesh rendering mode.")
+        , molRadiusSummand("molRadiusSummand", "Value to be added to the ligand molecule radius. Represents atom radius and target-ligand gap distance.")
         , currentTargetMeshData()
-        , currentTargetMeshRenderMode()
+        , currentTargetMeshRenderMode(WHOLE_MESH)
         , bbox(-1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f)
         , datahash(0)
         , reload_colors(true) {
     // parameters
-    this->optimizeCamera.SetParameter(new core::param::BoolParam(true));
+    this->optimizeCamera.SetParameter(new core::param::BoolParam(false));
     this->MakeSlotAvailable(&this->optimizeCamera);
 
-    this->currentTargetMeshRenderMode = WHOLE_MESH;
+    this->refreshTargetMesh.SetParameter(new core::param::BoolParam(true));
+    this->MakeSlotAvailable(&this->refreshTargetMesh);
+
     megamol::core::param::EnumParam* ctmrm = new megamol::core::param::EnumParam(int(this->currentTargetMeshRenderMode));
     ctmrm->SetTypePair(WHOLE_MESH, "whole mesh");
     ctmrm->SetTypePair(NAIVE_CAVETY, "naive cavety");
     this->renderTargetMeshModeParam << ctmrm;
     this->MakeSlotAvailable(&this->renderTargetMeshModeParam);
+
+    this->molRadiusSummand.SetParameter(new core::param::FloatParam(2.0f));  // value approximates the average gap between ligand and target + atom radius. (arbitrarily chosen)
+    this->MakeSlotAvailable(&this->molRadiusSummand);
 
     // data in slot(s)
     this->getTargetMeshData_.SetCompatibleCall<megamol::geocalls_gl::CallTriMeshDataGLDescription>();
@@ -106,50 +113,19 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         }
 
         /* ------- Approximate Ligand Radius ------- */
-      
+        
         const unsigned int ligandAtomCount = ligand->AtomCount();
         float* pos0 = new float[ligandAtomCount * 3];
         memcpy(pos0, ligand->AtomPositions(), ligandAtomCount * 3 * sizeof(float));
 
         glm::vec3 ligandCenter = moleculeCenter(pos0, ligandAtomCount);
 
-        // get radius, which will be used to select vertices around the ligand center
-        // i.e get max atom distance from ligand center + atom sphere radius + gap of target-ligand
-        float radius = 0;
-        for (int i = 0; i < ligand->AtomCount(); i++) {
-            float dist = glm::distance(glm::vec3(pos0[i * 3], pos0[i * 3 + 1], pos0[i * 3 + 2]), ligandCenter);
-            if (dist > radius) {
-                radius = dist;
-            }
-        }
-        // adding value approximatly of average gap between ligand and target (arbitrarily chosen)
-        // changes in this value might/should/will significantly change the camer orientation
-        const float atomRadiusAndGap = 2.0f;
-        radius += atomRadiusAndGap;
-
+        float radius = moleculeRadius(ligand, pos0, ligandCenter, this->molRadiusSummand.Param<core::param::FloatParam>()->Value());
 
         /* ------- Get Naive Camera Direction ------- */
 
         // get the naive camera direction
         glm::vec3 naiveCamDirection = naiveCameraDirection(target, ligandCenter, radius);
-
-        /* ------- Update Parameters ------- */
-
-        // Update 'currentTargetMeshRenderMode' if necessary 
-        this->UpdateParameters();
-
-        /* ------- Cut The Target Mesh ------- */
-
-        // decide which mesh will be passed on to rendering
-        std::cout << "Current Mesh Render Mode: " << currentTargetMeshRenderMode << "\n";
-        //switch (static_cast<MeshRenderMode>(int(this->renderTargetMeshModeParam.Param<megamol::core::param::EnumParam>()->Value()))) {
-        switch (currentTargetMeshRenderMode) {
-            case NAIVE_CAVETY:
-                this->currentTargetMeshData = naiveCavetyCutter(target->Objects()[0], ligandCenter, radius);
-                break;
-            case WHOLE_MESH :
-                this->currentTargetMeshData = target->Objects();
-        }
 
         /* ------- Set New Camera ------- */
 
@@ -162,6 +138,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         // delete pointers and ensure, that this if branch is executed once until user request
         this->optimizeCamera.Param<core::param::BoolParam>()->SetValue(false);     
         delete[] pos0;
+        std::cout << "REACHED: Renderer" << "\n";
     }
 
     return true;
@@ -187,6 +164,7 @@ bool ViewOptimizationRenderer::GetExtents(mmstd_gl::CallRender3DGL& call) {
 /* =============== Necessary Methods For Data Relay =============== */
 
 bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
+    /* ------- Get Call Data / Prepare Calls ------- */
     geocalls_gl::CallTriMeshDataGL* ctmd = dynamic_cast<geocalls_gl::CallTriMeshDataGL*>(&caller);
     if (ctmd == NULL)
         return false;
@@ -205,11 +183,42 @@ bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
         return false;
     }
 
-    // initialize the container 'currentTargetMeshData' with the unaltered target mesh data
-    static bool isInitialized = false;
-    if (!isInitialized) {
-        this->currentTargetMeshData = targetCtmd->Objects();
-        isInitialized = true;
+    /* ------- Update Parameters ------- */
+
+    // Update 'currentTargetMeshRenderMode' if necessary 
+    this->UpdateParameters();
+
+    /* ------- Mesh Rendering ------- */
+
+    // initialize or reload the container 'currentTargetMeshData' with target mesh data
+    if (this->refreshTargetMesh.Param<core::param::BoolParam>()->Value()) {
+        // decide which mesh will be passed on to rendering
+        if (this->currentTargetMeshRenderMode == NAIVE_CAVETY) {
+            protein_calls::MolecularDataCall* ligand = this->getLigandPDBData_.CallAs<protein_calls::MolecularDataCall>();
+            if (ligand == NULL)
+                return false;
+
+            if (!(*ligand)(protein_calls::MolecularDataCall::CallForGetData))
+                return false;
+            if (ligand->AtomCount() == 0)
+                return true;
+
+            const unsigned int ligandAtomCount = ligand->AtomCount();
+            float* pos0 = new float[ligandAtomCount * 3];
+            memcpy(pos0, ligand->AtomPositions(), ligandAtomCount * 3 * sizeof(float));
+
+            glm::vec3 ligandCenter = moleculeCenter(pos0, ligandAtomCount);
+            float radius = moleculeRadius(ligand, pos0, ligandCenter, this->molRadiusSummand.Param<core::param::FloatParam>()->Value());
+
+            this->currentTargetMeshData = naiveCavetyCutter(targetCtmd->Objects()[0], ligandCenter, radius);
+            delete[] pos0;
+            std::cout << "REACHED: Relay" << "\n";
+        }
+        else if (this->currentTargetMeshRenderMode == WHOLE_MESH) {
+            this->currentTargetMeshData = targetCtmd->Objects();
+        }     
+
+        this->refreshTargetMesh.Param<core::param::BoolParam>()->SetValue(false);
     }
 
     // pass on the (possibly cut) target mesh data  
@@ -240,10 +249,19 @@ bool ViewOptimizationRenderer::getExtentCallback(core::Call& caller) {
  */
 void ViewOptimizationRenderer::UpdateParameters() {
     // target mesh rendering mode param
-    std::cout << "Is Param dirty? : " << this->renderTargetMeshModeParam.IsDirty() << "\n";
+    static MeshRenderMode lastMode = WHOLE_MESH;        // Might cause problems when multiple instances of 'ViewOptimizationRenderer' are run simultaneously
     if (this->renderTargetMeshModeParam.IsDirty()) {
         this->currentTargetMeshRenderMode =
             static_cast<MeshRenderMode>(int(this->renderTargetMeshModeParam.Param<megamol::core::param::EnumParam>()->Value()));
+
+        // Ensure, that the mesh is only updated when requested 
+        if (this->currentTargetMeshRenderMode != lastMode) {
+            this->refreshTargetMesh.Param<core::param::BoolParam>()->SetValue(true);
+            lastMode = this->currentTargetMeshRenderMode;
+            std::cout << "REACHED: Parameters" << "\n";
+        }
+        
+
     }
 }
 
@@ -256,6 +274,21 @@ glm::vec3 ViewOptimizationRenderer::moleculeCenter(float* positions, unsigned in
     }
 
     return ligandCenter;
+}
+
+float ViewOptimizationRenderer::moleculeRadius(megamol::protein_calls::MolecularDataCall* mol, float* atomPos, glm::vec3 ligandCenter, float buffer) {
+    // get radius, which will be used to select vertices around the ligand center
+    // i.e get max atom distance from ligand center
+    float radius = 0;
+    for (int i = 0; i < mol->AtomCount(); i++) {
+        float dist = glm::distance(glm::vec3(atomPos[i * 3], atomPos[i * 3 + 1], atomPos[i * 3 + 2]), ligandCenter);
+        if (dist > radius) {
+            radius = dist;
+        }
+    }
+    radius += buffer;
+
+    return(radius);
 }
 
 glm::vec3 ViewOptimizationRenderer::naiveCameraDirection(geocalls_gl::CallTriMeshDataGL* ctmd, const glm::vec3 center, const float radius) {

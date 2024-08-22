@@ -14,6 +14,7 @@
 #include "mmstd_gl/renderer/Renderer3DModuleGL.h"
 #include "mmcore/CalleeSlot.h"
 #include "geometry_calls_gl/CallTriMeshDataGL.h"
+#include "protein_calls/MolecularDataCall.h"
 
 namespace megamol::protein_gl {
 
@@ -66,8 +67,11 @@ private:
 
     /* Module parameters */
     core::param::ParamSlot optimizeCamera;
+    core::param::ParamSlot refreshTargetMesh;
     /** parameter slot for mesh rendering mode */
     megamol::core::param::ParamSlot renderTargetMeshModeParam;
+    /** MSMS detail parameter */
+    megamol::core::param::ParamSlot molRadiusSummand;
 
     /* Stores the current target molecule object data */
     const geocalls_gl::CallTriMeshDataGL::Mesh* currentTargetMeshData;
@@ -100,6 +104,13 @@ private:
      * Input: float array of length = 0 (mod 3), where sets of three denote the (x,y,z) coordinates of an atom
      */
     glm::vec3 moleculeCenter(float* coordinates, unsigned int atomCount);
+
+
+    /*
+     * Finds the atom, that is furthest from the center.
+     * The 'buffer' is added to that distance.
+     */
+    float moleculeRadius(megamol::protein_calls::MolecularDataCall* ligand, float* atomPos, glm::vec3 ligandCenter, float buffer = 0);
 
     /*
      * Calculate a camera direction vector in a naive manner
