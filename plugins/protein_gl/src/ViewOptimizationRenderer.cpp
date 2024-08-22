@@ -127,6 +127,36 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         // get the naive camera direction
         glm::vec3 naiveCamDirection = naiveCameraDirection(target, ligandCenter, radius);
 
+        /* ------- Viewpoint Entropy: Import Rendered Texture ------- */
+
+        std::shared_ptr<glowl::Texture2D> colorTexture = nullptr;
+        megamol::compositing_gl::CallTexture2D* ct2d = this->getTexture_.CallAs<megamol::compositing_gl::CallTexture2D>();
+        if (ct2d != NULL) {
+            (*ct2d)(0);
+            colorTexture = ct2d->getData();
+        }
+        if (colorTexture == nullptr) {
+            return false;
+        }
+
+
+        for (unsigned int i = 0; i < 1; i++) {
+            std::cout << "Texture data: " << 0 << "\n";
+        }
+
+        const unsigned int hight = 1920;
+        const unsigned int width = 1080;
+        const unsigned int rgb = 3;
+        const unsigned int dataTypeBits = 8;
+        const unsigned int storageSize = hight * width * rgb * dataTypeBits;
+        unsigned int* textureData = new unsigned int[storageSize];
+
+
+        //GLuint
+        //glGetTextureImage(, 0, GL_RGB, GL_UNSIGNED_BYTE, storageSize);
+        //glGetTextureImage()
+
+
         /* ------- Set New Camera ------- */
 
         const float camDistFactor = 16.0f;
@@ -138,7 +168,6 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         // delete pointers and ensure, that this if branch is executed once until user request
         this->optimizeCamera.Param<core::param::BoolParam>()->SetValue(false);     
         delete[] pos0;
-        std::cout << "REACHED: Renderer" << "\n";
     }
 
     return true;
@@ -212,7 +241,6 @@ bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
 
             this->currentTargetMeshData = naiveCavetyCutter(targetCtmd->Objects()[0], ligandCenter, radius);
             delete[] pos0;
-            std::cout << "REACHED: Relay" << "\n";
         }
         else if (this->currentTargetMeshRenderMode == WHOLE_MESH) {
             this->currentTargetMeshData = targetCtmd->Objects();
@@ -258,10 +286,7 @@ void ViewOptimizationRenderer::UpdateParameters() {
         if (this->currentTargetMeshRenderMode != lastMode) {
             this->refreshTargetMesh.Param<core::param::BoolParam>()->SetValue(true);
             lastMode = this->currentTargetMeshRenderMode;
-            std::cout << "REACHED: Parameters" << "\n";
         }
-        
-
     }
 }
 
@@ -288,7 +313,7 @@ float ViewOptimizationRenderer::moleculeRadius(megamol::protein_calls::Molecular
     }
     radius += buffer;
 
-    return(radius);
+    return radius;
 }
 
 glm::vec3 ViewOptimizationRenderer::naiveCameraDirection(geocalls_gl::CallTriMeshDataGL* ctmd, const glm::vec3 center, const float radius) {
@@ -376,7 +401,9 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
             for (unsigned int j = 0; j < 3; j++) {
                 vertices[(i - offset) * 3 + j] = mesh.GetVertexPointerFloat()[i * 3 + j];
                 normals[(i - offset) * 3 + j] = mesh.GetNormalPointerFloat()[i * 3 + j];
-                colours[(i - offset) * 3 + j] = mesh.GetColourPointerByte()[i * 3 + j];
+                //colours[(i - offset) * 3 + j] = mesh.GetColourPointerByte()[i * 3 + j];
+                //colours[(i - offset) * 3 + j] = char((j*70 + (i-offset)) % 256);
+                colours[(i - offset) * 3 + j] = char(((i-offset) % 20 == 0 && j == 0) ? 200 : 0);
             }
 
             newVertCount++;
