@@ -139,23 +139,27 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
             return false;
         }
 
-
-        for (unsigned int i = 0; i < 1; i++) {
-            std::cout << "Texture data: " << 0 << "\n";
-        }
-
-        const unsigned int hight = 1920;
-        const unsigned int width = 1080;
+        const unsigned int hight = colorTexture->getWidth();
+        const unsigned int width = colorTexture->getHeight();
         const unsigned int rgb = 3;
-        const unsigned int dataTypeBits = 8;
+        const unsigned int dataTypeBits = 1;
         const unsigned int storageSize = hight * width * rgb * dataTypeBits;
-        unsigned int* textureData = new unsigned int[storageSize];
+        uint8_t* textureData = new uint8_t[storageSize];
 
+        for (unsigned int i = 0; i < 16; i++) {
+            std::cout << "Texture data" << i << " : " << int(textureData[i]) << "\n";
+        }
+        uint32_t array_id;
+        glGenTextures(1, &array_id);
+        colorTexture->bindTexture();
+        glBindTexture(GL_TEXTURE_2D, colorTexture->getName());
+        glGetTextureImage(colorTexture->getName(), 0, GL_RGB, GL_UNSIGNED_BYTE, storageSize, textureData);
 
-        //GLuint
-        //glGetTextureImage(, 0, GL_RGB, GL_UNSIGNED_BYTE, storageSize);
-        //glGetTextureImage()
-
+        for (unsigned int i = storageSize/6 + 1000; i < storageSize/6 + 1016; i++) {
+            std::cout << "Texture data" << i << " : " << textureData[i] << "\n";
+            std::cout << "Texture data" << i + storageSize/3 << " : " << textureData[i+storageSize / 3] << "\n";
+            std::cout << "Texture data" << i + storageSize / 3 * 2 << " : " << textureData[i + storageSize / 3 * 2] << "\n";
+        }
 
         /* ------- Set New Camera ------- */
 
@@ -167,7 +171,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
 
         // delete pointers and ensure, that this if branch is executed once until user request
         this->optimizeCamera.Param<core::param::BoolParam>()->SetValue(false);     
-        delete[] pos0;
+        delete[] pos0, textureData;
     }
 
     return true;
