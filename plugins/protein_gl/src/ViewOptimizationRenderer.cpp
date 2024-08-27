@@ -139,27 +139,34 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
             return false;
         }
 
-        const unsigned int hight = colorTexture->getWidth();
-        const unsigned int width = colorTexture->getHeight();
+        const unsigned int hight = colorTexture->getHeight();
+        const unsigned int width = colorTexture->getWidth();
         const unsigned int rgb = 3;
         const unsigned int dataTypeBits = 1;
         const unsigned int storageSize = hight * width * rgb * dataTypeBits;
         uint8_t* textureData = new uint8_t[storageSize];
 
-        for (unsigned int i = 0; i < 16; i++) {
-            std::cout << "Texture data" << i << " : " << int(textureData[i]) << "\n";
-        }
-        uint32_t array_id;
-        glGenTextures(1, &array_id);
-        colorTexture->bindTexture();
-        glBindTexture(GL_TEXTURE_2D, colorTexture->getName());
         glGetTextureImage(colorTexture->getName(), 0, GL_RGB, GL_UNSIGNED_BYTE, storageSize, textureData);
 
-        for (unsigned int i = storageSize/6 + 1000; i < storageSize/6 + 1016; i++) {
-            std::cout << "Texture data" << i << " : " << textureData[i] << "\n";
-            std::cout << "Texture data" << i + storageSize/3 << " : " << textureData[i+storageSize / 3] << "\n";
-            std::cout << "Texture data" << i + storageSize / 3 * 2 << " : " << textureData[i + storageSize / 3 * 2] << "\n";
+        for (unsigned int i = storageSize/6; i < storageSize/6 + 16; i++) {
+            //std::cout << "Texture data" << i << " : " << int(textureData[i]) << "\n";
+            std::cout << "Texture data center" << i + storageSize/3 << " : " << unsigned int(textureData[i+storageSize / 3]) << "\n";
+            //std::cout << "Texture data" << i + storageSize / 3 * 2 << " : " << int(textureData[i + storageSize / 3 * 2]) << "\n";
         }
+
+        for (unsigned int i = 0; i < 9; i++) {
+            std::cout << "Texture data begining" << i << " : " << unsigned int(textureData[i]) << "\n";
+        }
+
+        for (unsigned int i = storageSize - 15; i < storageSize; i++) {
+            std::cout << "Texture data end" << i << " : " << unsigned int(textureData[i]) << "\n";
+        }
+
+        std::cout << "Backgroundcolor: "
+            << call.BackgroundColor().r << ", "
+            << call.BackgroundColor().g << ", "
+            << call.BackgroundColor().b << ", "
+            << call.BackgroundColor().a;
 
         /* ------- Set New Camera ------- */
 
@@ -407,9 +414,12 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
                 normals[(i - offset) * 3 + j] = mesh.GetNormalPointerFloat()[i * 3 + j];
                 //colours[(i - offset) * 3 + j] = mesh.GetColourPointerByte()[i * 3 + j];
                 //colours[(i - offset) * 3 + j] = char((j*70 + (i-offset)) % 256);
-                colours[(i - offset) * 3 + j] = char(((i-offset) % 20 == 0 && j == 0) ? 200 : 0);
+                //colours[(i - offset) * 3 + j] = char(((i-offset) % 20 == 0 && j == 0) ? 200 : 0);     // sparce coloring 
+                colours[(i - offset) * 3 + j] = char((j == 0) ? (((i - offset) % 235) + 20) :
+                                                     (j == 1) ? (int((i - offset) / 235) % 235 + 20) :
+                                                                 (int((i - offset) / (235 * 235)) % 235 + 20));
             }
-
+            std::floor(2.3f);
             newVertCount++;
             oldVertIndices[i - offset] = i;
             atomIndex[i - offset] = mesh.GetVertexAttribPointerUInt32(0)[i];
