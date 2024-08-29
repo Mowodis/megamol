@@ -148,6 +148,8 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
 
         glGetTextureImage(colorTexture->getName(), 0, GL_RGB, GL_UNSIGNED_BYTE, storageSize, textureData);
 
+
+
         for (unsigned int i = storageSize/6; i < storageSize/6 + 16; i++) {
             //std::cout << "Texture data" << i << " : " << int(textureData[i]) << "\n";
             std::cout << "Texture data center" << i + storageSize/3 << " : " << unsigned int(textureData[i+storageSize / 3]) << "\n";
@@ -463,11 +465,11 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
                 for (unsigned int k = 0; k < 3; k++) {      // k koordinates
                     verticesAlt[i * 9 + j * 3 + k] = vertices[faces[i * 3 + j] * 3 + k];
                     normalsAlt[i * 9 + j * 3 + k] = normals[faces[i * 3 + j] * 3 + k];
-                    //coloursAlt[i * 9 + j * 3 + k] = (i % 2 == 0) ? ((k == 0) ? 210 : ((k == 1) ? 210 : 50)) : 10;
-                    //coloursAlt[i * 9 + j * 3 + k] = colours[faces[i * 3 + j] * 3 + k];
-                    coloursAlt[i * 9 + j * 3 + k] = char((k == 0) ? ((i % 235) + 20) :
-                        (k == 1) ? (int(i / 235) % 235 + 20) :
-                        (int(i / (235 * 235)) % 235 + 20));
+                    //coloursAlt[i * 9 + j * 3 + k] = (i % 2 == 0) ? ((k == 0) ? 210 : ((k == 1) ? 210 : 50)) : 10;     // bee-checkered  
+                    //coloursAlt[i * 9 + j * 3 + k] = colours[faces[i * 3 + j] * 3 + k];    // doesn't change the colors
+                    coloursAlt[i * 9 + j * 3 + k] = char((k == 0) ? ((i % 236) + 20) :
+                        (k == 1) ? (int(i / 255) % 255 + 1) :
+                        (int(i / (255 * 255)) % 255 + 1));
                 }
 
                 atomIndexAlt[i * 3 + j] = atomIndex[faces[i * 3 + j]];
@@ -507,4 +509,8 @@ unsigned int ViewOptimizationRenderer::inArray(unsigned int* arr, unsigned int e
     }
 
     return arrSize;
+}
+
+unsigned int* pixelColCounter(uint8_t* textureData, unsigned int faceCount) {
+
 }
