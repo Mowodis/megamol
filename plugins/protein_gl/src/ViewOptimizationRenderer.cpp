@@ -201,7 +201,7 @@ bool ViewOptimizationRenderer::GetExtents(mmstd_gl::CallRender3DGL& call) {
     return true;
 }
 
-/* =============== Necessary Methods For Data Relay =============== */
+/* =============== Necessary Methods For Target Data Relay =============== */
 
 bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
     /* ------- Get Call Data / Prepare Calls ------- */
@@ -222,8 +222,6 @@ bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
     if (!(*targetCtmd)(0)) {
         return false;
     }
-
-    /* ------- Update Parameters ------- */
 
     // Update 'currentTargetMeshRenderMode' if necessary 
     this->UpdateParameters();
@@ -250,7 +248,7 @@ bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
             glm::vec3 ligandCenter = moleculeCenter(pos0, ligandAtomCount);
             float radius = moleculeRadius(ligand, pos0, ligandCenter, this->molRadiusSummand.Param<core::param::FloatParam>()->Value());
 
-            this->currentTargetMeshData = naiveCavetyCutter(targetCtmd->Objects()[0], ligandCenter, radius);
+            this->currentTargetMeshData = naiveCavetyCutter(targetCtmd->Objects()[0], ligandCenter, radius, true);
             delete[] pos0;
         }
         else if (this->currentTargetMeshRenderMode == WHOLE_MESH) {
@@ -370,7 +368,7 @@ void ViewOptimizationRenderer::newCallCamera(
 }
 
 megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCavetyCutter(
-    geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 ligCenter, float radius) {
+    geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 ligCenter, float radius, bool altColAndMesh) {
 
     geocalls_gl::CallTriMeshDataGL::Mesh* cutMesh = new geocalls_gl::CallTriMeshDataGL::Mesh();
 
@@ -393,7 +391,7 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
     float* vertices = new float[newVertCount * 3];
     float* normals = new float[newVertCount * 3];
     unsigned char* colours = new unsigned char[newVertCount * 3];
-    // assumes 'mesh.GetVertexAttribCount' == 2 with 'AttribID 0' = atomIndex and 'AttribID 1' = values
+    // assuming 'mesh.GetVertexAttribCount' == 2 with 'AttribID 0' = atomIndex and 'AttribID 1' = values
     unsigned int* atomIndex = new unsigned int[newVertCount];
     float* values = new float[newVertCount];
 
@@ -412,14 +410,9 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
             for (unsigned int j = 0; j < 3; j++) {
                 vertices[(i - offset) * 3 + j] = mesh.GetVertexPointerFloat()[i * 3 + j];
                 normals[(i - offset) * 3 + j] = mesh.GetNormalPointerFloat()[i * 3 + j];
-                //colours[(i - offset) * 3 + j] = mesh.GetColourPointerByte()[i * 3 + j];
-                //colours[(i - offset) * 3 + j] = char((j*70 + (i-offset)) % 256);
-                //colours[(i - offset) * 3 + j] = char(((i-offset) % 20 == 0 && j == 0) ? 200 : 0);     // sparce coloring 
-                colours[(i - offset) * 3 + j] = char((j == 0) ? (((i - offset) % 235) + 20) :
-                                                     (j == 1) ? (int((i - offset) / 235) % 235 + 20) :
-                                                                 (int((i - offset) / (235 * 235)) % 235 + 20));
+                colours[(i - offset) * 3 + j] = mesh.GetColourPointerByte()[i * 3 + j];   // orriginal colors
+                //colours[(i - offset) * 3 + j] = char((j == 0) ? (((i - offset) % 235) + 20) : (j == 1) ? (int((i - offset) / 235) % 235 + 20) : (int((i - offset) / (235 * 235)) % 235 + 20));
             }
-            std::floor(2.3f);
             newVertCount++;
             oldVertIndices[i - offset] = i;
             atomIndex[i - offset] = mesh.GetVertexAttribPointerUInt32(0)[i];
@@ -434,33 +427,72 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
     unsigned int newFaceCount = 0;
 
     // determine which triangles are still valid under the new set of vertices and copy those that are
-    const unsigned int* faces = mesh.GetTriIndexPointerUInt32();
-    std::list<unsigned int> newFacesList;
+    const unsigned int* facesOld = mesh.GetTriIndexPointerUInt32();
+    std::list<unsigned int> facesList;
 
     unsigned int vertIndx[3];
     for (unsigned int i = 0; i < faceCount; i++) {
         for (unsigned int j = 0; j < 3; j++) {
-            vertIndx[j] = inArray(oldVertIndices, faces[i * 3 + j], newVertCount);
+            vertIndx[j] = inArray(oldVertIndices, facesOld[i * 3 + j], newVertCount);
         }
 
         if (vertIndx[0] != newVertCount
             && vertIndx[1] != newVertCount
             && vertIndx[2] != newVertCount) {
             for (unsigned int j = 0; j < 3; j++) {
-                newFacesList.push_back(vertIndx[j]);
+                facesList.push_back(vertIndx[j]);
             }
             newFaceCount++;
         }
     }
-    unsigned int* newFaces = new unsigned int[newFaceCount * 3];
-    std::copy(newFacesList.begin(), newFacesList.end(), newFaces);
+    unsigned int* faces = new unsigned int[newFaceCount * 3];
+    std::copy(facesList.begin(), facesList.end(), faces);
 
-    // initialize the new mesh with the cut data
-    cutMesh->SetVertexData(newVertCount, vertices, normals, colours, NULL, true);
-    cutMesh->SetTriangleData(newFaceCount, newFaces, true);
-    cutMesh->AddVertexAttribPointer(atomIndex);
-    cutMesh->AddVertexAttribPointer(values);
-    cutMesh->SetMaterial(NULL);
+    // Redo the arrays, so that every face now has it own 3 vertices 
+    if (altColAndMesh) {
+        float* verticesAlt = new float[newFaceCount * 9];
+        float* normalsAlt = new float[newFaceCount * 9];
+        unsigned char* coloursAlt = new unsigned char[newFaceCount * 9];
+
+        unsigned int* atomIndexAlt = new unsigned int[newFaceCount * 3];
+        float* valuesAlt = new float[newFaceCount * 3];
+        unsigned int* facesAlt = new unsigned int[newFaceCount * 3];
+
+        for (unsigned int i = 0; i < newFaceCount; i++) {   // i faces
+            for (unsigned int j = 0; j < 3; j++) {          // j vertices
+                for (unsigned int k = 0; k < 3; k++) {      // k koordinates
+                    verticesAlt[i * 9 + j * 3 + k] = vertices[faces[i * 3 + j] * 3 + k];
+                    normalsAlt[i * 9 + j * 3 + k] = normals[faces[i * 3 + j] * 3 + k];
+                    //coloursAlt[i * 9 + j * 3 + k] = (i % 2 == 0) ? ((k == 0) ? 210 : ((k == 1) ? 210 : 50)) : 10;
+                    //coloursAlt[i * 9 + j * 3 + k] = colours[faces[i * 3 + j] * 3 + k];
+                    coloursAlt[i * 9 + j * 3 + k] = char((k == 0) ? ((i % 235) + 20) :
+                        (k == 1) ? (int(i / 235) % 235 + 20) :
+                        (int(i / (235 * 235)) % 235 + 20));
+                }
+
+                atomIndexAlt[i * 3 + j] = atomIndex[faces[i * 3 + j]];
+                valuesAlt[i * 3 + j] = values[faces[i * 3 + j]];
+                facesAlt[i * 3 + j] = i * 3 + j;
+            }
+        }
+
+        // initialize the new mesh with the cut data
+        cutMesh->SetVertexData(newFaceCount * 3, verticesAlt, normalsAlt, coloursAlt, NULL, true);
+        cutMesh->SetTriangleData(newFaceCount, facesAlt, true);
+        cutMesh->AddVertexAttribPointer(atomIndexAlt);
+        cutMesh->AddVertexAttribPointer(valuesAlt);
+        cutMesh->SetMaterial(NULL);
+
+        delete[] vertices, normals, colours, atomIndex, values, faces;
+    }
+    else {
+        // initialize the new mesh with the cut data
+        cutMesh->SetVertexData(newVertCount, vertices, normals, colours, NULL, true);
+        cutMesh->SetTriangleData(newFaceCount, faces, true);
+        cutMesh->AddVertexAttribPointer(atomIndex);
+        cutMesh->AddVertexAttribPointer(values);
+        cutMesh->SetMaterial(NULL);
+    }
 
     delete[] oldVertIndices, faces;
 

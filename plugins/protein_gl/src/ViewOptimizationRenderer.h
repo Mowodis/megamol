@@ -128,7 +128,7 @@ private:
      * SIDEEFFECTS 
      */
     geocalls_gl::CallTriMeshDataGL::Mesh* naiveCavetyCutter(
-        megamol::geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 centrioid, float radius);
+        megamol::geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 centrioid, float radius, bool altColAndMesh);
 
     /*
      * checks if an element is contained within an array and returns its Index
