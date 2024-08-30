@@ -73,7 +73,7 @@ void ViewOptimizationRenderer::release() {}
 
 bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
 
-    /* ============= Cut provide Target Triangel Mesh Data  ============= */
+    /* ============= Set Dynamic Data Reloading ============= */
 
     //if (this->coloringModeParam0.IsDirty() || this->coloringModeParam1.IsDirty() ||
     //    this->colorWeightParam.IsDirty() || this->minGradColorParam.IsDirty() ||
@@ -139,36 +139,17 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
             return false;
         }
 
-        const unsigned int hight = colorTexture->getHeight();
+        const unsigned int height = colorTexture->getHeight();
         const unsigned int width = colorTexture->getWidth();
         const unsigned int rgb = 3;
-        const unsigned int dataTypeBits = 1;
-        const unsigned int storageSize = hight * width * rgb * dataTypeBits;
+        const unsigned int storageSize = height * width * rgb;
         uint8_t* textureData = new uint8_t[storageSize];
 
         glGetTextureImage(colorTexture->getName(), 0, GL_RGB, GL_UNSIGNED_BYTE, storageSize, textureData);
 
+        /* ------- Viewpoint Entropy: Calculation ------- */
 
-
-        for (unsigned int i = storageSize/6; i < storageSize/6 + 16; i++) {
-            //std::cout << "Texture data" << i << " : " << int(textureData[i]) << "\n";
-            std::cout << "Texture data center" << i + storageSize/3 << " : " << unsigned int(textureData[i+storageSize / 3]) << "\n";
-            //std::cout << "Texture data" << i + storageSize / 3 * 2 << " : " << int(textureData[i + storageSize / 3 * 2]) << "\n";
-        }
-
-        for (unsigned int i = 0; i < 9; i++) {
-            std::cout << "Texture data begining" << i << " : " << unsigned int(textureData[i]) << "\n";
-        }
-
-        for (unsigned int i = storageSize - 15; i < storageSize; i++) {
-            std::cout << "Texture data end" << i << " : " << unsigned int(textureData[i]) << "\n";
-        }
-
-        std::cout << "Backgroundcolor: "
-            << call.BackgroundColor().r << ", "
-            << call.BackgroundColor().g << ", "
-            << call.BackgroundColor().b << ", "
-            << call.BackgroundColor().a;
+        unsigned int* pixelForEachFace = pixelColCounter(textureData, currentTargetMeshData->GetTriCount(), storageSize);      // output will be + 1 longer, for the background
 
         /* ------- Set New Camera ------- */
 
@@ -413,7 +394,6 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
                 vertices[(i - offset) * 3 + j] = mesh.GetVertexPointerFloat()[i * 3 + j];
                 normals[(i - offset) * 3 + j] = mesh.GetNormalPointerFloat()[i * 3 + j];
                 colours[(i - offset) * 3 + j] = mesh.GetColourPointerByte()[i * 3 + j];   // orriginal colors
-                //colours[(i - offset) * 3 + j] = char((j == 0) ? (((i - offset) % 235) + 20) : (j == 1) ? (int((i - offset) / 235) % 235 + 20) : (int((i - offset) / (235 * 235)) % 235 + 20));
             }
             newVertCount++;
             oldVertIndices[i - offset] = i;
@@ -461,15 +441,13 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
         unsigned int* facesAlt = new unsigned int[newFaceCount * 3];
 
         for (unsigned int i = 0; i < newFaceCount; i++) {   // i faces
-            for (unsigned int j = 0; j < 3; j++) {          // j vertices
-                for (unsigned int k = 0; k < 3; k++) {      // k koordinates
+            for (uint8_t j = 0; j < 3; j++) {          // j vertices
+                for (uint8_t k = 0; k < 3; k++) {      // k koordinates
                     verticesAlt[i * 9 + j * 3 + k] = vertices[faces[i * 3 + j] * 3 + k];
                     normalsAlt[i * 9 + j * 3 + k] = normals[faces[i * 3 + j] * 3 + k];
                     //coloursAlt[i * 9 + j * 3 + k] = (i % 2 == 0) ? ((k == 0) ? 210 : ((k == 1) ? 210 : 50)) : 10;     // bee-checkered  
                     //coloursAlt[i * 9 + j * 3 + k] = colours[faces[i * 3 + j] * 3 + k];    // doesn't change the colors
-                    coloursAlt[i * 9 + j * 3 + k] = char((k == 0) ? ((i % 236) + 20) :
-                        (k == 1) ? (int(i / 255) % 255 + 1) :
-                        (int(i / (255 * 255)) % 255 + 1));
+                    coloursAlt[i * 9 + j * 3 + k] = coloringFunction(i,k);
                 }
 
                 atomIndexAlt[i * 3 + j] = atomIndex[faces[i * 3 + j]];
@@ -511,6 +489,38 @@ unsigned int ViewOptimizationRenderer::inArray(unsigned int* arr, unsigned int e
     return arrSize;
 }
 
-unsigned int* pixelColCounter(uint8_t* textureData, unsigned int faceCount) {
+char ViewOptimizationRenderer::coloringFunction(unsigned int i, uint8_t k) {
+    switch (k) {
+        case 0: // Red
+            return char((i % 255) + 1);
+            break;
+        case 1: // Green
+            return char(int(i / 255) % 255 + 1);
+            break;
+        case 2: //Blue
+            return char((int(i / (255 * 255)) % 255 + 1));
+            break;
+        default:
+            return char(0);
+    };
+}
 
+unsigned int* ViewOptimizationRenderer::pixelColCounter(uint8_t* textureData, unsigned int faceCount, unsigned int textureDataLength) {
+    unsigned int* pixelForEachFace = new unsigned int[faceCount + 1] {0};
+    unsigned int faceIndex;
+
+    // works inverse of 'coloringFunction', decoding the rgb values to face indices
+    for (unsigned int i = 0; i < textureDataLength / 3; i++) {
+        if (textureData[i * 3] == 0 && textureData[i * 3 + 1] == 0 && textureData[i * 3 + 2] == 0) {
+            pixelForEachFace[faceCount]++;
+        }
+        else {
+            faceIndex = (textureData[i * 3] - 1) +
+                (textureData[i * 3 + 1] - 1) * 255 +
+                (textureData[i * 3 + 2] - 1) * 255 ^ 2;
+            pixelForEachFace[faceIndex]++;
+        }
+    }
+
+    return pixelForEachFace;
 }

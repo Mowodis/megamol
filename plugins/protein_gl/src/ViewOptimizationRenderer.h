@@ -120,12 +120,12 @@ private:
 
     /*
      * Replace the camera position and direction of a call with new values
-     * SIDEEFFECTS
+     * SIDEEFFECTS on the 'call'
      */
     void newCallCamera(megamol::mmstd_gl::CallRender3DGL& call, glm::vec3 direction, glm::vec3 ligCenter, float radius, float camDistFactor);
 
-    /* remove all mesh vertices, that do not lay within a certain radius around a center coordinate
-     * SIDEEFFECTS 
+    /*
+     * remove all mesh vertices, that do not lay within a certain radius around a center coordinate
      */
     geocalls_gl::CallTriMeshDataGL::Mesh* naiveCavetyCutter(
         megamol::geocalls_gl::CallTriMeshDataGL::Mesh mesh, glm::vec3 centrioid, float radius, bool altColAndMesh);
@@ -135,6 +135,26 @@ private:
      * If not found, returns the length of the array
      */
     unsigned int inArray(unsigned int* arr, unsigned int element, unsigned int arrSize);
+
+    /*
+     * Returns a char values of 0 to 255 to be interpreted as rgb values.
+     * Intended use seen in 'naiveCavetyCutter' as a way to implicitly encode the target mesh faces  
+     *
+     * @param i : 0 <= i <= 16581375, otherwise the colering is not unique anymore and loops under assumption that all posibilities for k have been exhaused as well.
+     * @param k : 0 <= k <= 2, otherwise 0 is returned 
+     */
+    char coloringFunction(unsigned int i, uint8_t k);
+
+    /*
+     * Counts the occurences of uniquely colored pixels
+     * Maps the pixel color to an indice the same way 'naiveCavetyCutter' maps face indices to colors when 'altColAndMesh' = true
+     * Background color assumed black rgb = (0,0,0), stored in the last index.  
+     *
+     * @param textureData : rgb texture data, recolored by a cavetyCutter function
+     * @param nrColors : number of colors or faces + 1
+     * @param´textureDataLength : index count aka lendth if the 'textureData' array 
+     */
+    unsigned int* pixelColCounter(uint8_t* textureData, unsigned int faceCount, unsigned int textureDataLength);
 
 
 }; // class Vie//wpointOptimizer
