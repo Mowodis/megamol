@@ -79,6 +79,13 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
     //    this->colorWeightParam.IsDirty() || this->minGradColorParam.IsDirty() ||
     //    this->midGradColorParam.IsDirty() || this->maxGradColorParam.IsDirty() ||
     //    this->prevTime != int(ctmd->FrameID()) || reload_colors) {
+    //if (this->numFramesSlot.IsDirty() || this->numSpheresSlot.IsDirty()) {
+    //    this->resetFrameCache();
+    //    AnimDataModule::setFrameCount(frameCount);
+    //    AnimDataModule::initFrameCache(frameCount);
+    //    this->numFramesSlot.ResetDirty();
+    //    this->numSpheresSlot.ResetDirty();
+    //}
 
     /* ============= Set camera position ============= */
 
@@ -149,7 +156,29 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
 
         /* ------- Viewpoint Entropy: Calculation ------- */
 
-        unsigned int* pixelForEachFace = pixelColCounter(textureData, currentTargetMeshData->GetTriCount(), storageSize);      // output will be + 1 longer, for the background
+        unsigned int* pixelForEachTriangle = pixelColCounter(textureData, currentTargetMeshData->GetTriCount(), storageSize);      // output will be + 1, due to the background
+        std::cout << "Pixels per vertex : ";
+        for (unsigned int i = 0; i < currentTargetMeshData->GetTriCount() + 1; i++) {
+            std::cout << pixelForEachTriangle[i] << ", ";
+        }
+        std::cout << "\n";
+
+        float a_t = height * width;      // since the background also counts as a triangle, otherwise sum up visible triangel surface
+        float a_i = 0;
+        float viewpointEntropy = 0;
+
+        if (a_t != 0) {
+            for (unsigned int triangle = 0; triangle < currentTargetMeshData->GetTriCount() + 1; triangle++) {
+                a_i = pixelForEachTriangle[triangle];
+                //std::cout << "AUX " << triangle << " : " << a_i / a_t * log2(a_i / a_t) << "\n";
+                if (a_i != 0) {
+                    viewpointEntropy += -a_i / a_t * log2(a_i / a_t);
+                }
+            }
+        }
+        std::cout << "a_t " << a_t << "\n";
+        std::cout << "Viewpoint Entropy: " << viewpointEntropy << "\n";
+
 
         /* ------- Set New Camera ------- */
 
@@ -405,76 +434,76 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
         }
     }
 
-    const unsigned int faceCount = mesh.GetTriCount();
-    unsigned int newFaceCount = 0;
+    const unsigned int triangleCount = mesh.GetTriCount();
+    unsigned int newTriangleCount = 0;
 
     // determine which triangles are still valid under the new set of vertices and copy those that are
-    const unsigned int* facesOld = mesh.GetTriIndexPointerUInt32();
-    std::list<unsigned int> facesList;
+    const unsigned int* trianglesOld = mesh.GetTriIndexPointerUInt32();
+    std::list<unsigned int> trianglesList;
 
     unsigned int vertIndx[3];
-    for (unsigned int i = 0; i < faceCount; i++) {
+    for (unsigned int i = 0; i < triangleCount; i++) {
         for (unsigned int j = 0; j < 3; j++) {
-            vertIndx[j] = inArray(oldVertIndices, facesOld[i * 3 + j], newVertCount);
+            vertIndx[j] = inArray(oldVertIndices, trianglesOld[i * 3 + j], newVertCount);
         }
 
         if (vertIndx[0] != newVertCount
             && vertIndx[1] != newVertCount
             && vertIndx[2] != newVertCount) {
             for (unsigned int j = 0; j < 3; j++) {
-                facesList.push_back(vertIndx[j]);
+                trianglesList.push_back(vertIndx[j]);
             }
-            newFaceCount++;
+            newTriangleCount++;
         }
     }
-    unsigned int* faces = new unsigned int[newFaceCount * 3];
-    std::copy(facesList.begin(), facesList.end(), faces);
+    unsigned int* triangles = new unsigned int[newTriangleCount * 3];
+    std::copy(trianglesList.begin(), trianglesList.end(), triangles);
 
-    // Redo the arrays, so that every face now has it own 3 vertices 
+    // Redo the arrays, so that every triangle now has it own 3 vertices 
     if (altColAndMesh) {
-        float* verticesAlt = new float[newFaceCount * 9];
-        float* normalsAlt = new float[newFaceCount * 9];
-        unsigned char* coloursAlt = new unsigned char[newFaceCount * 9];
+        float* verticesAlt = new float[newTriangleCount * 9];
+        float* normalsAlt = new float[newTriangleCount * 9];
+        unsigned char* coloursAlt = new unsigned char[newTriangleCount * 9];
 
-        unsigned int* atomIndexAlt = new unsigned int[newFaceCount * 3];
-        float* valuesAlt = new float[newFaceCount * 3];
-        unsigned int* facesAlt = new unsigned int[newFaceCount * 3];
+        unsigned int* atomIndexAlt = new unsigned int[newTriangleCount * 3];
+        float* valuesAlt = new float[newTriangleCount * 3];
+        unsigned int* trianglesAlt = new unsigned int[newTriangleCount * 3];
 
-        for (unsigned int i = 0; i < newFaceCount; i++) {   // i faces
+        for (unsigned int i = 0; i < newTriangleCount; i++) {   // i triangles
             for (uint8_t j = 0; j < 3; j++) {          // j vertices
                 for (uint8_t k = 0; k < 3; k++) {      // k koordinates
-                    verticesAlt[i * 9 + j * 3 + k] = vertices[faces[i * 3 + j] * 3 + k];
-                    normalsAlt[i * 9 + j * 3 + k] = normals[faces[i * 3 + j] * 3 + k];
+                    verticesAlt[i * 9 + j * 3 + k] = vertices[triangles[i * 3 + j] * 3 + k];
+                    normalsAlt[i * 9 + j * 3 + k] = normals[triangles[i * 3 + j] * 3 + k];
                     //coloursAlt[i * 9 + j * 3 + k] = (i % 2 == 0) ? ((k == 0) ? 210 : ((k == 1) ? 210 : 50)) : 10;     // bee-checkered  
-                    //coloursAlt[i * 9 + j * 3 + k] = colours[faces[i * 3 + j] * 3 + k];    // doesn't change the colors
+                    //coloursAlt[i * 9 + j * 3 + k] = colours[triangles[i * 3 + j] * 3 + k];    // doesn't change the colors
                     coloursAlt[i * 9 + j * 3 + k] = coloringFunction(i,k);
                 }
 
-                atomIndexAlt[i * 3 + j] = atomIndex[faces[i * 3 + j]];
-                valuesAlt[i * 3 + j] = values[faces[i * 3 + j]];
-                facesAlt[i * 3 + j] = i * 3 + j;
+                atomIndexAlt[i * 3 + j] = atomIndex[triangles[i * 3 + j]];
+                valuesAlt[i * 3 + j] = values[triangles[i * 3 + j]];
+                trianglesAlt[i * 3 + j] = i * 3 + j;
             }
         }
 
         // initialize the new mesh with the cut data
-        cutMesh->SetVertexData(newFaceCount * 3, verticesAlt, normalsAlt, coloursAlt, NULL, true);
-        cutMesh->SetTriangleData(newFaceCount, facesAlt, true);
+        cutMesh->SetVertexData(newTriangleCount * 3, verticesAlt, normalsAlt, coloursAlt, NULL, true);
+        cutMesh->SetTriangleData(newTriangleCount, trianglesAlt, true);
         cutMesh->AddVertexAttribPointer(atomIndexAlt);
         cutMesh->AddVertexAttribPointer(valuesAlt);
         cutMesh->SetMaterial(NULL);
 
-        delete[] vertices, normals, colours, atomIndex, values, faces;
+        delete[] vertices, normals, colours, atomIndex, values, triangles;
     }
     else {
         // initialize the new mesh with the cut data
         cutMesh->SetVertexData(newVertCount, vertices, normals, colours, NULL, true);
-        cutMesh->SetTriangleData(newFaceCount, faces, true);
+        cutMesh->SetTriangleData(newTriangleCount, triangles, true);
         cutMesh->AddVertexAttribPointer(atomIndex);
         cutMesh->AddVertexAttribPointer(values);
         cutMesh->SetMaterial(NULL);
     }
 
-    delete[] oldVertIndices, faces;
+    delete[] oldVertIndices, triangles;
 
     return cutMesh;
 }
@@ -505,22 +534,24 @@ char ViewOptimizationRenderer::coloringFunction(unsigned int i, uint8_t k) {
     };
 }
 
-unsigned int* ViewOptimizationRenderer::pixelColCounter(uint8_t* textureData, unsigned int faceCount, unsigned int textureDataLength) {
-    unsigned int* pixelForEachFace = new unsigned int[faceCount + 1] {0};
-    unsigned int faceIndex;
+unsigned int* ViewOptimizationRenderer::pixelColCounter(uint8_t* textureData, unsigned int triangleCount, unsigned int textureDataLength) {
+    unsigned int* pixelForEachTriangle = new unsigned int[triangleCount + 1] {0};
+    unsigned int triangleIndex;
 
-    // works inverse of 'coloringFunction', decoding the rgb values to face indices
+    // works inverse of 'coloringFunction', decoding the rgb values to triangle indices
     for (unsigned int i = 0; i < textureDataLength / 3; i++) {
         if (textureData[i * 3] == 0 && textureData[i * 3 + 1] == 0 && textureData[i * 3 + 2] == 0) {
-            pixelForEachFace[faceCount]++;
+            pixelForEachTriangle[triangleCount]++;
         }
         else {
-            faceIndex = (textureData[i * 3] - 1) +
+            triangleIndex = (textureData[i * 3] - 1) +
                 (textureData[i * 3 + 1] - 1) * 255 +
                 (textureData[i * 3 + 2] - 1) * 255 ^ 2;
-            pixelForEachFace[faceIndex]++;
+            if (triangleIndex <= triangleCount) {
+                pixelForEachTriangle[triangleIndex]++;
+            }
         }
     }
 
-    return pixelForEachFace;
+    return pixelForEachTriangle;
 }

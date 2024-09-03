@@ -147,14 +147,14 @@ private:
 
     /*
      * Counts the occurences of uniquely colored pixels
-     * Maps the pixel color to an indice the same way 'naiveCavetyCutter' maps face indices to colors when 'altColAndMesh' = true
+     * Maps the pixel color to an indice the same way 'naiveCavetyCutter' maps triangle indices to colors when 'altColAndMesh' = true
      * Background color assumed black rgb = (0,0,0), stored in the last index.  
      *
      * @param textureData : rgb texture data, recolored by a cavetyCutter function
-     * @param nrColors : number of colors or faces + 1
+     * @param nrColors : number of colors or triangles + 1
      * @param´textureDataLength : index count aka lendth if the 'textureData' array 
      */
-    unsigned int* pixelColCounter(uint8_t* textureData, unsigned int faceCount, unsigned int textureDataLength);
+    unsigned int* pixelColCounter(uint8_t* textureData, unsigned int triangleCount, unsigned int textureDataLength);
 
 
 }; // class Vie//wpointOptimizer
