@@ -241,7 +241,7 @@ bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
     /* ------- Mesh Rendering ------- */
 
     // initialize or reload the container 'currentTargetMeshData' with target mesh data
-    if (this->refreshTargetMesh.Param<core::param::BoolParam>()->Value()) {
+    if (this->refreshTargetMesh.Param<core::param::BoolParam>()->Value() || currentTargetMeshData == nullptr) {
         // decide which mesh will be passed on to rendering
         if (this->currentTargetMeshRenderMode == NAIVE_CAVETY) {
             protein_calls::MolecularDataCall* ligand = this->getLigandPDBData_.CallAs<protein_calls::MolecularDataCall>();
@@ -265,7 +265,7 @@ bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
         }
         else if (this->currentTargetMeshRenderMode == WHOLE_MESH) {
             this->currentTargetMeshData = targetCtmd->Objects();
-        }     
+        }
 
         this->refreshTargetMesh.Param<core::param::BoolParam>()->SetValue(false);
     }
