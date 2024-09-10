@@ -1,6 +1,7 @@
 /**
  * MegaMol
- * Copyright (c) 2024, MegaMol Dev Team, bachelor student Marcel Heine
+ * Copyright (c) 2024, MegaMol Dev Team
+ * Author: Marcel Heine (Bachelor Student)
  * All rights reserved.
  */
 
@@ -72,6 +73,8 @@ private:
     megamol::core::param::ParamSlot renderTargetMeshModeParam;
     /** MSMS detail parameter */
     megamol::core::param::ParamSlot molRadiusSummand;
+    /** Distance of camera to ligand center when optimizing*/
+    megamol::core::param::ParamSlot camDistFactor;
 
     /* Stores the current target molecule object data */
     const geocalls_gl::CallTriMeshDataGL::Mesh* currentTargetMeshData;
@@ -121,8 +124,14 @@ private:
     /*
      * Replace the camera position and direction of a call with new values
      * SIDEEFFECTS on the 'call'
+     *
+     * @param call : rendering call
+     * @param direction : normalized vector
+     * @param ligCenter : coordinates of the averaged atom positions of the ligand molecule
+     * @param radius : furthes atom of the ligand + 'molRadiusSummand'
+     * @camDistFactor : multiplyed with 'radius' to determine how far from the 'ligCenter' the camera is being placed 
      */
-    void newCallCamera(megamol::mmstd_gl::CallRender3DGL& call, glm::vec3 direction, glm::vec3 ligCenter, float radius, float camDistFactor);
+    void setCallCamera(megamol::mmstd_gl::CallRender3DGL& call, glm::vec3 direction, glm::vec3 ligCenter, float radius, float camDistFactor);
 
     /*
      * remove all mesh vertices, that do not lay within a certain radius around a center coordinate
@@ -154,8 +163,23 @@ private:
      * @param nrColors : number of colors or triangles + 1
      * @param´textureDataLength : index count aka lendth if the 'textureData' array 
      */
-    unsigned int* pixelColCounter(uint8_t* textureData, unsigned int triangleCount, unsigned int textureDataLength);
+    unsigned int* pixelColorCounter(const uint8_t* textureData, const unsigned int triangleCount, const unsigned int textureDataLength);
 
+    /*
+     * Calculates the viewpoint entropy for every vertex at a set distance from the ligand center
+     *
+     * @param vertices : float array containing sets of three, interpreted as a vector with the ligand center, forming camera perspectives
+     * @param vertexCount : length of 'vertices' divided by 3
+     * @param distance : distance of the camera to the ligand center
+     * @param ligandCenter : averaged atom positions of the ligand molecule
+     */
+    float* evaluateViewpoints(mmstd_gl::CallRender3DGL& call, const float* vertices, const unsigned int vertexCount, const glm::vec3 ligandCenter, const float radius);
+
+
+    /*
+     * Calculates the viewpoint entropy of the current scene 
+     */
+    float calculateViewpointEntropy();
 
 }; // class Vie//wpointOptimizer
 

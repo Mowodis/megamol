@@ -1,6 +1,7 @@
 /**
  * MegaMol
- * Copyright (c) 2024, MegaMol Dev Team, bachelor student Marcel Heine
+ * Copyright (c) 2024, MegaMol Dev Team
+ * Author: Marcel Heine (Bachelor Student)
  * All rights reserved.
  */
 
@@ -21,7 +22,8 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
         , optimizeCamera("optimizeCamera", "Acts as a button to set the camera to view the ligand binding site")
         , refreshTargetMesh("refreshTargetMesh", "Acts as a button to refresh/recalculate the rendered target triangle mesh")
         , renderTargetMeshModeParam("targetMeshRenderMode", "The target mesh rendering mode.")
-        , molRadiusSummand("molRadiusSummand", "Value to be added to the ligand molecule radius. Represents atom radius and target-ligand gap distance.")
+        , molRadiusSummand("molRadiusSummand", "Distance to be added to the ligand molecule radius given in Angström. Represents atom radius and target-ligand gap distance.")
+        , camDistFactor("camDistFactor", "Multiplied with the ligand Radius (Distance center to furthest Atom) to form the camera distance to the ligand center.")
         , currentTargetMeshData()
         , currentTargetMeshRenderMode(WHOLE_MESH)
         , bbox(-1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f)
@@ -42,6 +44,9 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
 
     this->molRadiusSummand.SetParameter(new core::param::FloatParam(2.0f));  // value approximates the average gap between ligand and target + atom radius. (arbitrarily chosen)
     this->MakeSlotAvailable(&this->molRadiusSummand);
+
+    this->camDistFactor.SetParameter(new core::param::FloatParam(12.0f));  // comfortable distance (arbitrarily chosen)
+    this->MakeSlotAvailable(&this->camDistFactor);
 
     // data in slot(s)
     this->getTargetMeshData_.SetCompatibleCall<megamol::geocalls_gl::CallTriMeshDataGLDescription>();
@@ -145,7 +150,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         if (colorTexture == nullptr) {
             return false;
         }
-
+        
         const unsigned int height = colorTexture->getHeight();
         const unsigned int width = colorTexture->getWidth();
         const unsigned int rgb = 3;
@@ -156,12 +161,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
 
         /* ------- Viewpoint Entropy: Calculation ------- */
 
-        unsigned int* pixelForEachTriangle = pixelColCounter(textureData, currentTargetMeshData->GetTriCount(), storageSize);      // output will be + 1, due to the background
-        std::cout << "Pixels per vertex : ";
-        for (unsigned int i = 0; i < currentTargetMeshData->GetTriCount() + 1; i++) {
-            std::cout << pixelForEachTriangle[i] << ", ";
-        }
-        std::cout << "\n";
+        unsigned int* pixelForEachTriangle = pixelColorCounter(textureData, currentTargetMeshData->GetTriCount(), storageSize);      // output will be + 1, due to the background
 
         float a_t = height * width;      // since the background also counts as a triangle, otherwise sum up visible triangel surface
         float a_i = 0;
@@ -170,21 +170,30 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         if (a_t != 0) {
             for (unsigned int triangle = 0; triangle < currentTargetMeshData->GetTriCount() + 1; triangle++) {
                 a_i = pixelForEachTriangle[triangle];
-                //std::cout << "AUX " << triangle << " : " << a_i / a_t * log2(a_i / a_t) << "\n";
+
                 if (a_i != 0) {
                     viewpointEntropy += -a_i / a_t * log2(a_i / a_t);
                 }
             }
         }
+
+
+
+
         std::cout << "a_t " << a_t << "\n";
         std::cout << "Viewpoint Entropy: " << viewpointEntropy << "\n";
 
+        float* tempDirection = new float[6]{ naiveCamDirection.x, naiveCamDirection.y, naiveCamDirection.z };
+        float* tempViewEntropResultes = evaluateViewpoints(call, tempDirection, 1, ligandCenter, radius);
+
+        std::cout << "VE test: " << tempViewEntropResultes[0] << "\n";
+        delete[] tempDirection, tempViewEntropResultes;
+
+
 
         /* ------- Set New Camera ------- */
-
-        const float camDistFactor = 16.0f;
         
-        newCallCamera(call, naiveCamDirection, ligandCenter, radius, camDistFactor);
+        setCallCamera(call, naiveCamDirection, ligandCenter, radius, this->camDistFactor.Param<core::param::FloatParam>()->Value());
 
         /* ------- Cleanup & Global Value(s) ------- */
 
@@ -364,8 +373,9 @@ glm::vec3 ViewOptimizationRenderer::naiveCameraDirection(geocalls_gl::CallTriMes
     return naiveCamDirection;
 }
 
-void ViewOptimizationRenderer::newCallCamera(
+void ViewOptimizationRenderer::setCallCamera(
     mmstd_gl::CallRender3DGL& call, glm::vec3 direction, glm::vec3 ligCenter, float radius, float camDistFactor) {
+
     // Change the camera position coordinates of the CallRenderer3DGL call
     auto& cam = call.GetCamera();
     core::view::Camera::Pose newCamPose = cam.getPose();  // old camera as default
@@ -474,8 +484,7 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
                 for (uint8_t k = 0; k < 3; k++) {      // k koordinates
                     verticesAlt[i * 9 + j * 3 + k] = vertices[triangles[i * 3 + j] * 3 + k];
                     normalsAlt[i * 9 + j * 3 + k] = normals[triangles[i * 3 + j] * 3 + k];
-                    //coloursAlt[i * 9 + j * 3 + k] = (i % 2 == 0) ? ((k == 0) ? 210 : ((k == 1) ? 210 : 50)) : 10;     // bee-checkered  
-                    //coloursAlt[i * 9 + j * 3 + k] = colours[triangles[i * 3 + j] * 3 + k];    // doesn't change the colors
+                    //coloursAlt[i * 9 + j * 3 + k] = colours[triangles[i * 3 + j] * 3 + k];    // the original colors
                     coloursAlt[i * 9 + j * 3 + k] = coloringFunction(i,k);
                 }
 
@@ -534,7 +543,7 @@ char ViewOptimizationRenderer::coloringFunction(unsigned int i, uint8_t k) {
     };
 }
 
-unsigned int* ViewOptimizationRenderer::pixelColCounter(uint8_t* textureData, unsigned int triangleCount, unsigned int textureDataLength) {
+unsigned int* ViewOptimizationRenderer::pixelColorCounter(const uint8_t* textureData, const unsigned int triangleCount, const unsigned int textureDataLength) {
     unsigned int* pixelForEachTriangle = new unsigned int[triangleCount + 1] {0};
     unsigned int triangleIndex;
 
@@ -555,3 +564,70 @@ unsigned int* ViewOptimizationRenderer::pixelColCounter(uint8_t* textureData, un
 
     return pixelForEachTriangle;
 }
+
+float* ViewOptimizationRenderer::evaluateViewpoints(
+    mmstd_gl::CallRender3DGL& call, const float* vertices, const unsigned int vertexCount, const glm::vec3 ligandCenter, const float radius) {
+
+    /* ------- Setup variables ------- */
+
+    float* directionVE = new float[vertexCount] {0};
+    glm::vec3 direction = glm::vec3(0);
+    std::shared_ptr<glowl::Texture2D> colorTexture = nullptr;
+    megamol::compositing_gl::CallTexture2D* ct2d = NULL;
+
+    unsigned int height = 0;
+    unsigned int width = 0;
+    unsigned int rgb = 3;
+    unsigned int storageSize = 0;
+
+    float a_t = 0;      // since the background also counts as a triangle, otherwise sum up visible triangel surface
+    float a_i = 0;
+
+    for (unsigned int i = 0; i < vertexCount; i++) {    // Iterate every vertex. Here, vertices are synonymous with view directions
+
+        /* ------- reposition the camera ------- */
+
+        direction = glm::vec3(vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2]);
+        direction = glm::normalize(direction);
+
+        setCallCamera(call, direction, ligandCenter, radius, this->camDistFactor.Param<core::param::FloatParam>()->Value());
+
+        /* ------- get the new texture ------- */
+
+        ct2d = this->getTexture_.CallAs<megamol::compositing_gl::CallTexture2D>();
+        if (ct2d != NULL) {
+            (*ct2d)(0);
+            colorTexture = ct2d->getData();
+        }
+        if (colorTexture == nullptr) {
+            return directionVE;
+        }
+
+        height = colorTexture->getHeight();
+        width = colorTexture->getWidth();
+        storageSize = height * width * rgb;
+        uint8_t* textureData = new uint8_t[storageSize];
+
+        glGetTextureImage(colorTexture->getName(), 0, GL_RGB, GL_UNSIGNED_BYTE, storageSize, textureData);
+
+        /* ------- calculate the viewpoint entropy ------- */
+
+        unsigned int* pixelForEachTriangle = pixelColorCounter(textureData, currentTargetMeshData->GetTriCount(), storageSize);      // output will be + 1, due to the background
+
+
+        a_t = height * width;      // since the background also counts as a triangle, this definition of a_t is used. Otherwise sum up all visible triangel surfaces
+
+        if (a_t != 0) {
+            for (unsigned int triangle = 0; triangle < currentTargetMeshData->GetTriCount() + 1; triangle++) {
+                a_i = pixelForEachTriangle[triangle];
+
+                if (a_i != 0) {
+                    directionVE[i] += -a_i / a_t * log2(a_i / a_t);
+                }
+            }
+        }
+    }
+
+    return directionVE;
+}
+
