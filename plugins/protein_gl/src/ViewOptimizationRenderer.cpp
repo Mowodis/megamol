@@ -10,6 +10,7 @@
 #include "mmstd_gl/view/View3DGL.h"
 #include "protein_calls/MolecularDataCall.h"
 #include "compositing_gl/CompositingCalls.h"
+#include "protein/Icosphere.h"
 
 using namespace megamol::protein_gl;
 
@@ -125,7 +126,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         }
 
         /* ------- Approximate Ligand Radius ------- */
-        
+
         const unsigned int ligandAtomCount = ligand->AtomCount();
         float* pos0 = new float[ligandAtomCount * 3];
         memcpy(pos0, ligand->AtomPositions(), ligandAtomCount * 3 * sizeof(float));
@@ -150,7 +151,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         if (colorTexture == nullptr) {
             return false;
         }
-        
+
         const unsigned int height = colorTexture->getHeight();
         const unsigned int width = colorTexture->getWidth();
         const unsigned int rgb = 3;
@@ -178,17 +179,35 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         }
 
 
+        Icosphere sampleSphere = Icosphere(1.0f, 2, false);
 
+        //const float* ssVertices = sampleSphere.getVertices();
+        const float* ssVertices = sampleSphere.getVertices();
+
+        std::cout << "Sample Sphere vertices: " << "\n";
+        for (int i = 0; i < sampleSphere.getVertexCount(); i++) {
+            std::cout << "Vertex " << i << " : " << ssVertices[i * 3] << ", " << ssVertices[i * 3 + 1] << ", " << ssVertices[i * 3 + 2] << "\n";
+        }
+
+        std::cout << "Subdivision: " << sampleSphere.getSubdivision() << "\n";
+        unsigned int truevertexCount = pow(sampleSphere.getSubdivision(), 2) * 10 + 2;
+
+        std::cout << "Vertex Count: " << truevertexCount << "\n";
+        float* sssVertices = removeDuplicatVertices(ssVertices, sampleSphere.getVertexCount(), sampleSphere.getVertexCount());
+
+        std::cout << "Sample Sphere vertices: " << "\n";
+        for (int i = 0; i < sampleSphere.getVertexCount(); i++) {
+            std::cout << "Vertex " << i << " : " << sssVertices[i*3] << ", " << sssVertices[i*3+1] << ", " << sssVertices[i*3+2] << "\n";
+        }
 
         std::cout << "a_t " << a_t << "\n";
         std::cout << "Viewpoint Entropy: " << viewpointEntropy << "\n";
 
-        float* tempDirection = new float[6]{ naiveCamDirection.x, naiveCamDirection.y, naiveCamDirection.z };
-        float* tempViewEntropResultes = evaluateViewpoints(call, tempDirection, 1, ligandCenter, radius);
+        //const glm::vec3* tempDirection = new glm::vec3[1]{ naiveCamDirection };
+        //float* tempViewEntropResultes = evaluateViewpoints(call, tempDirection, 1, ligandCenter, radius);
 
-        std::cout << "VE test: " << tempViewEntropResultes[0] << "\n";
-        delete[] tempDirection, tempViewEntropResultes;
-
+        //std::cout << "VE test: " << tempViewEntropResultes[0] << "\n";
+        //delete[] tempDirection, tempViewEntropResultes;
 
 
         /* ------- Set New Camera ------- */
@@ -199,7 +218,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
 
         // delete pointers and ensure, that this if branch is executed once until user request
         this->optimizeCamera.Param<core::param::BoolParam>()->SetValue(false);     
-        delete[] pos0, textureData;
+        delete[] pos0, textureData, ssVertices, sssVertices;
     }
 
     return true;
@@ -410,14 +429,14 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
         }
     }
 
-    float* vertices = new float[newVertCount * 3];
-    float* normals = new float[newVertCount * 3];
-    unsigned char* colours = new unsigned char[newVertCount * 3];
+    float* vertices = new float[newVertCount * 3]{ 0 };
+    float* normals = new float[newVertCount * 3]{ 0 };
+    unsigned char* colours = new unsigned char[newVertCount * 3]{ 0 };
     // assuming 'mesh.GetVertexAttribCount' == 2 with 'AttribID 0' = atomIndex and 'AttribID 1' = values
-    unsigned int* atomIndex = new unsigned int[newVertCount];
-    float* values = new float[newVertCount];
+    unsigned int* atomIndex = new unsigned int[newVertCount]{ 0 };
+    float* values = new float[newVertCount]{ 0 };
 
-    unsigned int* oldVertIndices = new unsigned int[newVertCount];
+    unsigned int* oldVertIndices = new unsigned int[newVertCount]{ 0 };
 
     // second: copy all the used vertices with normals and color to new arrays.
     // note the old vertex indices
@@ -466,18 +485,18 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
             newTriangleCount++;
         }
     }
-    unsigned int* triangles = new unsigned int[newTriangleCount * 3];
+    unsigned int* triangles = new unsigned int[newTriangleCount * 3]{ 0 };
     std::copy(trianglesList.begin(), trianglesList.end(), triangles);
 
     // Redo the arrays, so that every triangle now has it own 3 vertices 
     if (altColAndMesh) {
-        float* verticesAlt = new float[newTriangleCount * 9];
-        float* normalsAlt = new float[newTriangleCount * 9];
-        unsigned char* coloursAlt = new unsigned char[newTriangleCount * 9];
+        float* verticesAlt = new float[newTriangleCount * 9]{ 0 };
+        float* normalsAlt = new float[newTriangleCount * 9]{ 0 };
+        unsigned char* coloursAlt = new unsigned char[newTriangleCount * 9]{ 0 };
 
-        unsigned int* atomIndexAlt = new unsigned int[newTriangleCount * 3];
-        float* valuesAlt = new float[newTriangleCount * 3];
-        unsigned int* trianglesAlt = new unsigned int[newTriangleCount * 3];
+        unsigned int* atomIndexAlt = new unsigned int[newTriangleCount * 3]{ 0 };
+        float* valuesAlt = new float[newTriangleCount * 3]{ 0 };
+        unsigned int* trianglesAlt = new unsigned int[newTriangleCount * 3]{ 0 };
 
         for (unsigned int i = 0; i < newTriangleCount; i++) {   // i triangles
             for (uint8_t j = 0; j < 3; j++) {          // j vertices
@@ -485,7 +504,7 @@ megamol::geocalls_gl::CallTriMeshDataGL::Mesh* ViewOptimizationRenderer::naiveCa
                     verticesAlt[i * 9 + j * 3 + k] = vertices[triangles[i * 3 + j] * 3 + k];
                     normalsAlt[i * 9 + j * 3 + k] = normals[triangles[i * 3 + j] * 3 + k];
                     //coloursAlt[i * 9 + j * 3 + k] = colours[triangles[i * 3 + j] * 3 + k];    // the original colors
-                    coloursAlt[i * 9 + j * 3 + k] = coloringFunction(i,k);
+                    coloursAlt[i * 9 + j * 3 + k] = coloringFunction(i, k);
                 }
 
                 atomIndexAlt[i * 3 + j] = atomIndex[triangles[i * 3 + j]];
@@ -527,7 +546,35 @@ unsigned int ViewOptimizationRenderer::inArray(unsigned int* arr, unsigned int e
     return arrSize;
 }
 
-char ViewOptimizationRenderer::coloringFunction(unsigned int i, uint8_t k) {
+float* ViewOptimizationRenderer::removeDuplicatVertices(const float* vertices, const unsigned int arrLen, const unsigned int vertexCount) {
+    glm::vec3 currentVert = glm::vec3(0);
+    std::list<glm::vec3> vecList;
+
+    // save the vertex array in alternate form
+    for (unsigned int i = 0; i < arrLen; i++) {
+        currentVert = glm::vec3(vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2]);
+        vecList.push_back(currentVert);
+    }
+
+    // remove duplicates
+    vecList.unique();
+
+    std::cout << "VEC LIST SIZE: " << vecList.size() << "\n";
+
+    // turn the list of glm::vec3 back into an array of float
+    float* uniqueVertices = new float[vecList.size() * 3]{ 0 };
+    for (unsigned int i = 0; i < vecList.size(); i++) {
+        uniqueVertices[i * 3] = vecList.front().x;
+        uniqueVertices[i * 3 + 1] = vecList.front().y;
+        uniqueVertices[i * 3 + 2] = vecList.front().z;
+        vecList.pop_front();
+    }
+
+    return uniqueVertices;
+}
+
+
+char ViewOptimizationRenderer::coloringFunction(const unsigned int i, const uint8_t k) {
     switch (k) {
         case 0: // Red
             return char((i % 255) + 1);
@@ -630,4 +677,3 @@ float* ViewOptimizationRenderer::evaluateViewpoints(
 
     return directionVE;
 }
-

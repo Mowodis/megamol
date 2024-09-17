@@ -146,13 +146,23 @@ private:
     unsigned int inArray(unsigned int* arr, unsigned int element, unsigned int arrSize);
 
     /*
+     * Removes duplicate vertices from flaot array.
+     * 
+     *
+     * @param vertices : float array, with sets of three coresponding to x,y,z coordinates
+     * @param arrLen : length of 'vertices' array = 0 (mod 3)
+     * @param vertexCount : number of unique vertices or sets of three
+     */
+    float* removeDuplicatVertices(const float* vertices, const unsigned int arrLen, const unsigned int vertexCount);
+
+    /*
      * Returns a char values of 0 to 255 to be interpreted as rgb values.
      * Intended use seen in 'naiveCavetyCutter' as a way to implicitly encode the target mesh faces  
      *
      * @param i : 0 <= i <= 16581375, otherwise the colering is not unique anymore and loops under assumption that all posibilities for k have been exhaused as well.
      * @param k : 0 <= k <= 2, otherwise 0 is returned 
      */
-    char coloringFunction(unsigned int i, uint8_t k);
+    char coloringFunction(const unsigned int i, const uint8_t k);
 
     /*
      * Counts the occurences of uniquely colored pixels
