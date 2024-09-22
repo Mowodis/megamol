@@ -179,35 +179,22 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         }
 
 
-        Icosphere sampleSphere = Icosphere(1.0f, 2, false);
-
-        //const float* ssVertices = sampleSphere.getVertices();
+        Icosphere sampleSphere = Icosphere(1.0f, 3, false);
         const float* ssVertices = sampleSphere.getVertices();
 
-        std::cout << "Sample Sphere vertices: " << "\n";
-        for (int i = 0; i < sampleSphere.getVertexCount(); i++) {
-            std::cout << "Vertex " << i << " : " << ssVertices[i * 3] << ", " << ssVertices[i * 3 + 1] << ", " << ssVertices[i * 3 + 2] << "\n";
-        }
-
-        std::cout << "Subdivision: " << sampleSphere.getSubdivision() << "\n";
-        unsigned int truevertexCount = pow(sampleSphere.getSubdivision(), 2) * 10 + 2;
-
-        std::cout << "Vertex Count: " << truevertexCount << "\n";
-        float* sssVertices = removeDuplicatVertices(ssVertices, sampleSphere.getVertexCount(), sampleSphere.getVertexCount());
-
-        std::cout << "Sample Sphere vertices: " << "\n";
-        for (int i = 0; i < sampleSphere.getVertexCount(); i++) {
-            std::cout << "Vertex " << i << " : " << sssVertices[i*3] << ", " << sssVertices[i*3+1] << ", " << sssVertices[i*3+2] << "\n";
-        }
+        unsigned int trueVertexCount = pow(sampleSphere.getSubdivision(), 2) * 10 + 2;  // number of vertices of icosahedron with n subdivisions
+        float* ssVerticesUnique = removeDuplicatVertices(ssVertices, sampleSphere.getVertexCount(), trueVertexCount);
 
         std::cout << "a_t " << a_t << "\n";
         std::cout << "Viewpoint Entropy: " << viewpointEntropy << "\n";
+        
+        float* sphereEntropys = evaluateViewpoints(call, ssVerticesUnique, trueVertexCount, ligandCenter, radius);
 
-        //const glm::vec3* tempDirection = new glm::vec3[1]{ naiveCamDirection };
-        //float* tempViewEntropResultes = evaluateViewpoints(call, tempDirection, 1, ligandCenter, radius);
+        for (unsigned int i = 0; i < trueVertexCount; i++) {
+            std::cout << "Entropy " << i << " : " << sphereEntropys[i] << ", Vertex: " << ssVerticesUnique[i * 3]
+                << ", " << ssVerticesUnique[i * 3 + 1] << ", " << ssVerticesUnique[i * 3 + 2] << ", " << "\n";
+        }
 
-        //std::cout << "VE test: " << tempViewEntropResultes[0] << "\n";
-        //delete[] tempDirection, tempViewEntropResultes;
 
 
         /* ------- Set New Camera ------- */
@@ -218,7 +205,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
 
         // delete pointers and ensure, that this if branch is executed once until user request
         this->optimizeCamera.Param<core::param::BoolParam>()->SetValue(false);     
-        delete[] pos0, textureData, ssVertices, sssVertices;
+        delete[] pos0, textureData, ssVertices, ssVerticesUnique, sphereEntropys;
     }
 
     return true;
@@ -547,27 +534,34 @@ unsigned int ViewOptimizationRenderer::inArray(unsigned int* arr, unsigned int e
 }
 
 float* ViewOptimizationRenderer::removeDuplicatVertices(const float* vertices, const unsigned int arrLen, const unsigned int vertexCount) {
-    glm::vec3 currentVert = glm::vec3(0);
-    std::list<glm::vec3> vecList;
+    float* uniqueVertices = new float[vertexCount * 3] { 0 };
+    unsigned int uCount = 0;
+    bool isUnique = true;
+    float x, y, z = 0;
+    const int decimalCutoff = pow(10, 6);
 
-    // save the vertex array in alternate form
     for (unsigned int i = 0; i < arrLen; i++) {
-        currentVert = glm::vec3(vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2]);
-        vecList.push_back(currentVert);
-    }
+        isUnique = true;
+        // round the coordinates
+        glm::vec3 cv = glm::vec3((float) ((int) (round(vertices[i * 3] * decimalCutoff))) / decimalCutoff,
+            (float) ((int) (round(vertices[i * 3 + 1] * decimalCutoff))) / decimalCutoff,
+            (float) ((int) (round(vertices[i * 3 + 2] * decimalCutoff))) / decimalCutoff);
 
-    // remove duplicates
-    vecList.unique();
-
-    std::cout << "VEC LIST SIZE: " << vecList.size() << "\n";
-
-    // turn the list of glm::vec3 back into an array of float
-    float* uniqueVertices = new float[vecList.size() * 3]{ 0 };
-    for (unsigned int i = 0; i < vecList.size(); i++) {
-        uniqueVertices[i * 3] = vecList.front().x;
-        uniqueVertices[i * 3 + 1] = vecList.front().y;
-        uniqueVertices[i * 3 + 2] = vecList.front().z;
-        vecList.pop_front();
+        for (unsigned int j = 0; j < uCount; j++) {
+            if ((uniqueVertices[j * 3] == cv.x) &&
+                (uniqueVertices[j * 3 + 1] == cv.y) &&
+                (uniqueVertices[j * 3 + 2] == cv.z))
+            {
+                isUnique = false;
+                break;
+            }
+        }
+        if (isUnique && uCount < vertexCount) {
+            uniqueVertices[uCount * 3] = cv.x;
+            uniqueVertices[uCount * 3 + 1] = cv.y;
+            uniqueVertices[uCount * 3 + 2] = cv.z;
+            uCount++;
+        }
     }
 
     return uniqueVertices;
@@ -582,7 +576,7 @@ char ViewOptimizationRenderer::coloringFunction(const unsigned int i, const uint
         case 1: // Green
             return char(int(i / 255) % 255 + 1);
             break;
-        case 2: //Blue
+        case 2: // Blue
             return char((int(i / (255 * 255)) % 255 + 1));
             break;
         default:
@@ -638,6 +632,10 @@ float* ViewOptimizationRenderer::evaluateViewpoints(
         direction = glm::normalize(direction);
 
         setCallCamera(call, direction, ligandCenter, radius, this->camDistFactor.Param<core::param::FloatParam>()->Value());
+
+        std::cout << "x:" << call.GetCamera().getPose().position.x << ", y:" << call.GetCamera().getPose().position.y
+                  << ", z:" << call.GetCamera().getPose().position.z << "\n";
+
 
         /* ------- get the new texture ------- */
 
