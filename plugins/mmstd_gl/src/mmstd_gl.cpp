@@ -15,6 +15,7 @@
 #include "mmstd_gl/renderer/CallRender2DGL.h"
 #include "mmstd_gl/renderer/CallRender3DGL.h"
 #include "mmstd_gl/renderer/CallRenderViewGL.h"
+#include "mmstd_gl/renderer/CameraOverwrite.h"
 #include "mmstd_gl/renderer/TimeManipulator.h"
 #include "mmstd_gl/renderer/TransferFunctionGL.h"
 #include "mmstd_gl/special/CallbackScreenShooter.h"
@@ -51,6 +52,7 @@ public:
         this->module_descriptions.RegisterAutoDescription<mmstd_gl::TransferFunctionGL>();
         this->module_descriptions.RegisterAutoDescription<mmstd_gl::AnimationRenderer>();
         this->module_descriptions.RegisterAutoDescription<mmstd_gl::BoundingBoxRenderer>();
+        this->module_descriptions.RegisterAutoDescription<mmstd_gl::CameraOverwrite>();
         this->module_descriptions.RegisterAutoDescription<mmstd_gl::PlaneRenderer>();
         this->module_descriptions.RegisterAutoDescription<mmstd_gl::UniFlagStorage>();
         this->module_descriptions.RegisterAutoDescription<mmstd_gl::ImageSpaceAmortization2D>();

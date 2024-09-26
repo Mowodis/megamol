@@ -28,34 +28,83 @@ public:
         NAIVE_CAVETY = 1
     };
 
+    /*
+     * Answer the name of this module.
+     *
+     * @return The name of this module.
+     */
     static const char* ClassName() {
         return "ViewOptimizationRenderer";
     }
 
+    /*
+     * Answer a human readable description of this module.
+     *
+     * @return A human readable description of this module.
+     */
     static const char* Description() {
         return "Camera viwepoint optimizer for protein-ligand docking scenes";
     }
-
+    /*
+     * Answers whether this module is available on the current system.
+     *
+     * @return 'true' if the module is available, 'false' otherwise.
+     */
     static bool IsAvailable() {
         return true;
     }
 
+    /* Ctor. */
     ViewOptimizationRenderer();
+
+    /* Dtor. */
     ~ViewOptimizationRenderer() override;
 
 protected:
+    /*
+     * Implementation of 'Create'.
+     *
+     * @return 'true' on success, 'false' otherwise.
+     */
     bool create() override;
+
+    /*
+     * Implementation of 'release'.
+     */
     void release() override;
+
+    /*
+      * The get extents callback. The module should set the members of
+      * 'call' to tell the caller the extents of its data (bounding boxes
+      * and times).
+      *
+      * @param call The calling call.
+      *
+      * @return The return value of the function.
+      */
     bool GetExtents(mmstd_gl::CallRender3DGL& call) override;
+
+    /*
+     * The Open GL Render callback.
+     *
+     * @param call The calling call.
+     * @return The return value of the function.
+     */
     bool Render(mmstd_gl::CallRender3DGL& call) override;
 
-    /** The bounding box */
+    /* =========== Global Variables =========== */
+
+    /* The bounding box */
     vislib::math::Cuboid<float> bbox;
 
+    /* Color relode variable */
     bool reload_colors;
 
-    /** The data update hash */
+    /* The data update hash */
     SIZE_T datahash;
+
+    /* The camera position currently used during viewpoint sampling via viewpoint entropy*/
+    mmstd_gl::CallRender3DGL currentSamplingCamera;
 
 private:
     /* Require the mesh data from protein and ligand, as well as a texture*/
@@ -65,6 +114,10 @@ private:
 
     /* Output of the targets cut triangel mesh data */
     core::CalleeSlot _cutTriangleMesh;
+
+    /* Output a 'CallRender3DGL' object, containing only a camera */
+    core::CalleeSlot _sampleSphereCamera;
+
 
     /* Module parameters */
     core::param::ParamSlot optimizeCamera;
@@ -94,6 +147,11 @@ private:
      * Extend function for molecular mesh data relay puproses
      */
     bool getExtentCallback(core::Call& caller);
+
+    /*
+     * Relays a 'CallRender3DGL' object containung only the most recent camera for viewpoint entriopy sampling
+     */
+    bool getSamplingCamera(core::Call& caller);
 
     /**
      * Update parameter slots.
@@ -185,12 +243,10 @@ private:
      */
     float* evaluateViewpoints(mmstd_gl::CallRender3DGL& call, const float* vertices, const unsigned int vertexCount, const glm::vec3 ligandCenter, const float radius);
 
-
     /*
-     * Calculates the viewpoint entropy of the current scene 
+     * Calculates the viewpoint entropy of the current scene using an icospheres vertices as sampling viewpoints
      */
     float calculateViewpointEntropy();
+}; 
 
-}; // class Vie//wpointOptimizer
-
-} // namespace megamol::protein_gl
+} 

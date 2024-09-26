@@ -16,12 +16,13 @@ using namespace megamol::protein_gl;
 
 ViewOptimizationRenderer::ViewOptimizationRenderer()
         : getTargetMeshData_("getTargetMeshData",
-              "Connects the renderer to a data provider to retrieve target mesh data")
-        , getLigandPDBData_("getLigandPDBData", "Connects the renderer to a data provider to retrieve lignad mesh data")
-        , getTexture_("InputTexture", "Access texture that is used to calulate the Viewpoint Entropy")
-        , _cutTriangleMesh("cutTriangleMesh", "Forwards either the mesh data of a previous 'MSMSMeshLoader' or a reduced version")
-        , optimizeCamera("optimizeCamera", "Acts as a button to set the camera to view the ligand binding site")
-        , refreshTargetMesh("refreshTargetMesh", "Acts as a button to refresh/recalculate the rendered target triangle mesh")
+              "Connects the renderer to a data provider to retrieve target mesh data.")
+        , getLigandPDBData_("getLigandPDBData", "Connects the renderer to a data provider to retrieve lignad mesh data.")
+        , getTexture_("InputTexture", "Access texture that is used to calulate the Viewpoint Entropy.")
+        , _cutTriangleMesh("cutTriangleMesh", "Forwards either the mesh data of a previous 'MSMSMeshLoader' or a reduced version.")
+        , _sampleSphereCamera("_sampleSphereCamera", "Call containing only the camera, used by the sampling process when optimizing the camera via viewpoint entropy.")
+        , optimizeCamera("optimizeCamera", "Acts as a button to set the camera to view the ligand binding site.")
+        , refreshTargetMesh("refreshTargetMesh", "Acts as a button to refresh/recalculate the rendered target triangle mesh.")
         , renderTargetMeshModeParam("targetMeshRenderMode", "The target mesh rendering mode.")
         , molRadiusSummand("molRadiusSummand", "Distance to be added to the ligand molecule radius given in Angström. Represents atom radius and target-ligand gap distance.")
         , camDistFactor("camDistFactor", "Multiplied with the ligand Radius (Distance center to furthest Atom) to form the camera distance to the ligand center.")
@@ -29,7 +30,8 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
         , currentTargetMeshRenderMode(WHOLE_MESH)
         , bbox(-1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f)
         , datahash(0)
-        , reload_colors(true) {
+        , reload_colors(true)
+        , currentSamplingCamera(mmstd_gl::CallRender3DGL()) {
     // parameters
     this->optimizeCamera.SetParameter(new core::param::BoolParam(false));
     this->MakeSlotAvailable(&this->optimizeCamera);
@@ -65,6 +67,9 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
     this->_cutTriangleMesh.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetData", &ViewOptimizationRenderer::getDataCallback);
     this->_cutTriangleMesh.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetExtent", &ViewOptimizationRenderer::getExtentCallback);
     this->MakeSlotAvailable(&this->_cutTriangleMesh);
+
+    this->_sampleSphereCamera.SetCallback(mmstd_gl::CallRender3DGL::ClassName(), "GetCamera", &ViewOptimizationRenderer::getSamplingCamera);
+    this->MakeSlotAvailable(&this->_sampleSphereCamera);
 }
 
 ViewOptimizationRenderer::~ViewOptimizationRenderer() {
@@ -78,20 +83,6 @@ bool ViewOptimizationRenderer::create() {
 void ViewOptimizationRenderer::release() {}
 
 bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
-
-    /* ============= Set Dynamic Data Reloading ============= */
-
-    //if (this->coloringModeParam0.IsDirty() || this->coloringModeParam1.IsDirty() ||
-    //    this->colorWeightParam.IsDirty() || this->minGradColorParam.IsDirty() ||
-    //    this->midGradColorParam.IsDirty() || this->maxGradColorParam.IsDirty() ||
-    //    this->prevTime != int(ctmd->FrameID()) || reload_colors) {
-    //if (this->numFramesSlot.IsDirty() || this->numSpheresSlot.IsDirty()) {
-    //    this->resetFrameCache();
-    //    AnimDataModule::setFrameCount(frameCount);
-    //    AnimDataModule::initFrameCache(frameCount);
-    //    this->numFramesSlot.ResetDirty();
-    //    this->numSpheresSlot.ResetDirty();
-    //}
 
     /* ============= Set camera position ============= */
 
@@ -190,6 +181,8 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         
         float* sphereEntropys = evaluateViewpoints(call, ssVerticesUnique, trueVertexCount, ligandCenter, radius);
 
+
+
         for (unsigned int i = 0; i < trueVertexCount; i++) {
             std::cout << "Entropy " << i << " : " << sphereEntropys[i] << ", Vertex: " << ssVerticesUnique[i * 3]
                 << ", " << ssVerticesUnique[i * 3 + 1] << ", " << ssVerticesUnique[i * 3 + 2] << ", " << "\n";
@@ -228,7 +221,7 @@ bool ViewOptimizationRenderer::GetExtents(mmstd_gl::CallRender3DGL& call) {
     return true;
 }
 
-/* =============== Necessary Methods For Target Data Relay =============== */
+/* =============== Methods For Target Data Relay =============== */
 
 bool ViewOptimizationRenderer::getDataCallback(core::Call& caller) {
     /* ------- Get Call Data / Prepare Calls ------- */
@@ -303,6 +296,20 @@ bool ViewOptimizationRenderer::getExtentCallback(core::Call& caller) {
     ctmd->SetExtent(frameCnt, this->bbox.Left(), this->bbox.Bottom(), this->bbox.Back(), this->bbox.Right(),
         this->bbox.Top(), this->bbox.Front());
     
+    return true;
+}
+
+/* =============== Methods For Target Data Relay =============== */
+
+bool ViewOptimizationRenderer::getSamplingCamera(core::Call& caller) {
+    mmstd_gl::CallRender3DGL* cr = dynamic_cast<mmstd_gl::CallRender3DGL*>(&caller);
+
+    if (cr == NULL) {
+        return false;
+    }
+
+    cr->SetCamera(currentSamplingCamera.GetCamera());
+
     return true;
 }
 
@@ -616,6 +623,8 @@ float* ViewOptimizationRenderer::evaluateViewpoints(
     std::shared_ptr<glowl::Texture2D> colorTexture = nullptr;
     megamol::compositing_gl::CallTexture2D* ct2d = NULL;
 
+    currentSamplingCamera.SetCamera(call.GetCamera());
+
     unsigned int height = 0;
     unsigned int width = 0;
     unsigned int rgb = 3;
@@ -631,7 +640,9 @@ float* ViewOptimizationRenderer::evaluateViewpoints(
         direction = glm::vec3(vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2]);
         direction = glm::normalize(direction);
 
-        setCallCamera(call, direction, ligandCenter, radius, this->camDistFactor.Param<core::param::FloatParam>()->Value());
+        setCallCamera(currentSamplingCamera, direction, ligandCenter, radius, this->camDistFactor.Param<core::param::FloatParam>()->Value());
+
+
 
         std::cout << "x:" << call.GetCamera().getPose().position.x << ", y:" << call.GetCamera().getPose().position.y
                   << ", z:" << call.GetCamera().getPose().position.z << "\n";
@@ -641,7 +652,6 @@ float* ViewOptimizationRenderer::evaluateViewpoints(
 
         ct2d = this->getTexture_.CallAs<megamol::compositing_gl::CallTexture2D>();
         if (ct2d != NULL) {
-            (*ct2d)(0);
             colorTexture = ct2d->getData();
         }
         if (colorTexture == nullptr) {
