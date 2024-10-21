@@ -32,10 +32,47 @@ bool CameraOverwrite::GetExtents(CallRender3DGL& call) {
 }
 
 bool CameraOverwrite::Render(CallRender3DGL& call) {
-    
+
     CallRender3DGL* cr = this->getCamera_.CallAs<CallRender3DGL>();
+
+    if (cr == nullptr) {
+        return false;
+    }
+
+    if (!(*cr)(0)) {
+        //std::cout << "CR IS NULL!!! \n";
+        return false;
+    }
+
+    /*
+    if (!(*cr)(0)) {
+        return false;
+    }
+    */
+
     megamol::core::view::Camera cam = cr->GetCamera();
+
+    /*
+    std::cout << "Camera Overwrite: "
+              << "x:" << cam.getPose().direction.x << ", y:" << cam.getPose().direction.y
+              << ", z:" << cam.getPose().direction.z;
+    */
+    /*
+     if (call.GetCamera().getPose().direction.x != cam.getPose().direction.x,
+        call.GetCamera().getPose().direction.y != cam.getPose().direction.y,
+        call.GetCamera().getPose().direction.z != cam.getPose().direction.z) {
+
+        std::cout << "Camera Overwrite: "
+                  << "x:" << cam.getPose().direction.x << ", y:" << cam.getPose().direction.y
+                  << ", z:" << cam.getPose().direction.z;
+    }
+    */
+    
+
     call.SetCamera(cam);
+
+    
+    
 
     return true;
 }

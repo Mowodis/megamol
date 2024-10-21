@@ -20,7 +20,7 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
         , getLigandPDBData_("getLigandPDBData", "Connects the renderer to a data provider to retrieve lignad mesh data.")
         , getTexture_("InputTexture", "Access texture that is used to calulate the Viewpoint Entropy.")
         , _cutTriangleMesh("cutTriangleMesh", "Forwards either the mesh data of a previous 'MSMSMeshLoader' or a reduced version.")
-        , _sampleSphereCamera("_sampleSphereCamera", "Call containing only the camera, used by the sampling process when optimizing the camera via viewpoint entropy.")
+        , _sampleSphereCamera("sampleSphereCamera", "Call containing only the camera, used by the sampling process when optimizing the camera via viewpoint entropy.")
         , optimizeCamera("optimizeCamera", "Acts as a button to set the camera to view the ligand binding site.")
         , refreshTargetMesh("refreshTargetMesh", "Acts as a button to refresh/recalculate the rendered target triangle mesh.")
         , renderTargetMeshModeParam("targetMeshRenderMode", "The target mesh rendering mode.")
@@ -68,6 +68,26 @@ ViewOptimizationRenderer::ViewOptimizationRenderer()
     this->_cutTriangleMesh.SetCallback(geocalls_gl::CallTriMeshDataGL::ClassName(), "GetExtent", &ViewOptimizationRenderer::getExtentCallback);
     this->MakeSlotAvailable(&this->_cutTriangleMesh);
 
+    this->_sampleSphereCamera.SetCallback(mmstd_gl::CallRender3DGL::ClassName(),
+        core::view::InputCall::FunctionName(core::view::InputCall::FnOnKey), &ViewOptimizationRenderer::OnObservedKey);
+    this->_sampleSphereCamera.SetCallback(mmstd_gl::CallRender3DGL::ClassName(),
+        core::view::InputCall::FunctionName(core::view::InputCall::FnOnChar),
+        &ViewOptimizationRenderer::OnObservedChar);
+    this->_sampleSphereCamera.SetCallback(mmstd_gl::CallRender3DGL::ClassName(),
+        core::view::InputCall::FunctionName(core::view::InputCall::FnOnMouseButton),
+        &ViewOptimizationRenderer::OnObservedMouseButton);
+    this->_sampleSphereCamera.SetCallback(mmstd_gl::CallRender3DGL::ClassName(),
+        core::view::InputCall::FunctionName(core::view::InputCall::FnOnMouseMove),
+        &ViewOptimizationRenderer::OnObservedMouseMove);
+    this->_sampleSphereCamera.SetCallback(mmstd_gl::CallRender3DGL::ClassName(),
+        core::view::InputCall::FunctionName(core::view::InputCall::FnOnMouseScroll),
+        &ViewOptimizationRenderer::OnObservedMouseScroll);
+    this->_sampleSphereCamera.SetCallback(mmstd_gl::CallRender3DGL::ClassName(),
+        core::view::AbstractCallRender::FunctionName(core::view::AbstractCallRender::FnRender),
+        &ViewOptimizationRenderer::RenderObservation);
+    this->_sampleSphereCamera.SetCallback(mmstd_gl::CallRender3DGL::ClassName(),
+        core::view::AbstractCallRender::FunctionName(core::view::AbstractCallRender::FnGetExtents),
+        &ViewOptimizationRenderer::GetObservationExtents);
     this->_sampleSphereCamera.SetCallback(mmstd_gl::CallRender3DGL::ClassName(), "GetCamera", &ViewOptimizationRenderer::getSamplingCamera);
     this->MakeSlotAvailable(&this->_sampleSphereCamera);
 }
@@ -179,13 +199,14 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
         std::cout << "a_t " << a_t << "\n";
         std::cout << "Viewpoint Entropy: " << viewpointEntropy << "\n";
         
-        float* sphereEntropys = evaluateViewpoints(call, ssVerticesUnique, trueVertexCount, ligandCenter, radius);
+        float* sphereEntropy = evaluateViewpoints(call, ssVerticesUnique, trueVertexCount, ligandCenter, radius);
 
 
 
         for (unsigned int i = 0; i < trueVertexCount; i++) {
-            std::cout << "Entropy " << i << " : " << sphereEntropys[i] << ", Vertex: " << ssVerticesUnique[i * 3]
-                << ", " << ssVerticesUnique[i * 3 + 1] << ", " << ssVerticesUnique[i * 3 + 2] << ", " << "\n";
+            std::cout << "Viewpoint " << i << " | "
+                      << "Entropy:" << sphereEntropy[i] << ", x:" << ssVerticesUnique[i * 3]
+                << ", y:" << ssVerticesUnique[i * 3 + 1] << ", z:" << ssVerticesUnique[i * 3 + 2] << "\n";
         }
 
 
@@ -198,7 +219,7 @@ bool ViewOptimizationRenderer::Render(mmstd_gl::CallRender3DGL& call) {
 
         // delete pointers and ensure, that this if branch is executed once until user request
         this->optimizeCamera.Param<core::param::BoolParam>()->SetValue(false);     
-        delete[] pos0, textureData, ssVertices, ssVerticesUnique, sphereEntropys;
+        delete[] pos0, textureData, ssVertices, ssVerticesUnique, sphereEntropy;
     }
 
     return true;
@@ -299,11 +320,86 @@ bool ViewOptimizationRenderer::getExtentCallback(core::Call& caller) {
     return true;
 }
 
+/* =============== Methods For Sample Sphere Camara Output =============== */
+
+bool ViewOptimizationRenderer::CheckObservedSlots(
+    mmstd_gl::CallRender3DGL*& in, mmstd_gl::CallRender3DGL*& out, core::Call& call) {
+    out = dynamic_cast<mmstd_gl::CallRender3DGL*>(&_sampleSphereCamera);
+    in = dynamic_cast<mmstd_gl::CallRender3DGL*>(&call);
+    return out != nullptr && in != nullptr;
+}
+
+bool ViewOptimizationRenderer::GetObservationExtents(core::Call& call) {
+    mmstd_gl::CallRender3DGL *in = nullptr, *out = nullptr;
+    if (CheckObservedSlots(in, out, call)) {
+        *out = *in;
+        const auto res = (*out)(core::view::AbstractCallRender::FnGetExtents);
+        *in = *out;
+        return res;
+    }
+    return false;
+}
+
+bool ViewOptimizationRenderer::RenderObservation(core::Call& call) {
+    mmstd_gl::CallRender3DGL *in = nullptr, *out = nullptr;
+    if (CheckObservedSlots(in, out, call)) {
+        *out = *in;
+        const auto res = (*out)(core::view::AbstractCallRender::FnRender);
+        *in = *out;
+        return res;
+    }
+    return false;
+}
+
+bool ViewOptimizationRenderer::OnObservedKey(core::Call& call) {
+    mmstd_gl::CallRender3DGL *in = nullptr, *out = nullptr;
+    if (CheckObservedSlots(in, out, call)) {
+        out->SetInputEvent(in->GetInputEvent());
+        return (*out)(core::view::AbstractCallRender::FnOnKey);
+    }
+    return false;
+}
+
+bool ViewOptimizationRenderer::OnObservedChar(core::Call& call) {
+    mmstd_gl::CallRender3DGL *in = nullptr, *out = nullptr;
+    if (CheckObservedSlots(in, out, call)) {
+        out->SetInputEvent(in->GetInputEvent());
+        return (*out)(core::view::AbstractCallRender::FnOnChar);
+    }
+    return false;
+}
+
+bool ViewOptimizationRenderer::OnObservedMouseButton(core::Call& call) {
+    mmstd_gl::CallRender3DGL *in = nullptr, *out = nullptr;
+    if (CheckObservedSlots(in, out, call)) {
+        out->SetInputEvent(in->GetInputEvent());
+        return (*out)(core::view::AbstractCallRender::FnOnMouseButton);
+    }
+    return false;
+}
+
+bool ViewOptimizationRenderer::OnObservedMouseMove(core::Call& call) {
+    mmstd_gl::CallRender3DGL *in = nullptr, *out = nullptr;
+    if (CheckObservedSlots(in, out, call)) {
+        out->SetInputEvent(in->GetInputEvent());
+        return (*out)(core::view::AbstractCallRender::FnOnMouseMove);
+    }
+    return false;
+}
+
+bool ViewOptimizationRenderer::OnObservedMouseScroll(core::Call& call) {
+    mmstd_gl::CallRender3DGL *in = nullptr, *out = nullptr;
+    if (CheckObservedSlots(in, out, call)) {
+        out->SetInputEvent(in->GetInputEvent());
+        return (*out)(core::view::AbstractCallRender::FnOnMouseScroll);
+    }
+    return false;
+}
+
 /* =============== Methods For Target Data Relay =============== */
 
 bool ViewOptimizationRenderer::getSamplingCamera(core::Call& caller) {
     mmstd_gl::CallRender3DGL* cr = dynamic_cast<mmstd_gl::CallRender3DGL*>(&caller);
-
     if (cr == NULL) {
         return false;
     }
@@ -623,6 +719,7 @@ float* ViewOptimizationRenderer::evaluateViewpoints(
     std::shared_ptr<glowl::Texture2D> colorTexture = nullptr;
     megamol::compositing_gl::CallTexture2D* ct2d = NULL;
 
+
     currentSamplingCamera.SetCamera(call.GetCamera());
 
     unsigned int height = 0;
@@ -641,12 +738,6 @@ float* ViewOptimizationRenderer::evaluateViewpoints(
         direction = glm::normalize(direction);
 
         setCallCamera(currentSamplingCamera, direction, ligandCenter, radius, this->camDistFactor.Param<core::param::FloatParam>()->Value());
-
-
-
-        std::cout << "x:" << call.GetCamera().getPose().position.x << ", y:" << call.GetCamera().getPose().position.y
-                  << ", z:" << call.GetCamera().getPose().position.z << "\n";
-
 
         /* ------- get the new texture ------- */
 

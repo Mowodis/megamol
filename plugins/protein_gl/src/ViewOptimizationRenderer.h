@@ -153,6 +153,16 @@ private:
      */
     bool getSamplingCamera(core::Call& caller);
 
+    /** Callbacks for the relay of the sampling sphere viewpoints */
+    bool CheckObservedSlots(mmstd_gl::CallRender3DGL*& in, mmstd_gl::CallRender3DGL*& out, core::Call& call); 
+    bool GetObservationExtents(core::Call& call);
+    bool RenderObservation(core::Call& call);
+    bool OnObservedMouseButton(core::Call& call);
+    bool OnObservedMouseMove(core::Call& call);
+    bool OnObservedMouseScroll(core::Call& call);
+    bool OnObservedChar(core::Call& call);
+    bool OnObservedKey(core::Call& call);
+
     /**
      * Update parameter slots.
      */
